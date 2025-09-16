@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ConRumbo — MVP</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<header>
+  <h1>ConRumbo — Primeros Auxilios con IA</h1>
+  <div id="status">API: <span id="apiStatus">comprobando…</span> | Modo: <span id="mode">online</span></div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>1) Activa por voz o botón</h2>
+    <div class="controls">
+      <button id="btnSpeak">🎙️ Mantén pulsado para hablar</button>
+      <input id="manualText" type="text" placeholder="O escribe: 'no respira', 'atragantamiento'…"/>
+      <button id="btnSend">Enviar</button>
+    </div>
+    <p id="heard">🗣️ Dije: —</p>
+  </section>
+
+  <section class="panel">
+    <h2>2) Bot IA — Guía Paso a Paso</h2>
+    <div id="protoTitle" class="title"></div>
+    <ol id="steps"></ol>
+    <div class="step-controls">
+      <button id="btnPrev">◀️ Paso anterior</button>
+      <button id="btnNext">Siguiente paso ▶️</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>📴 Modo Offline (fallback)</h2>
+    <p>Si falla la API, se usarán protocolos locales guardados en el navegador.</p>
+  </section>
+
+  <section class="panel">
+    <h2>📊 Feedback</h2>
+    <textarea id="feedback" placeholder="¿Fue clara la instrucción? ¿Cuántos segundos tardaste en actuar?"></textarea>
+    <button id="btnSaveFb">Guardar nota local</button>
+  </section>
+</main>
+
+<footer>
+  <small>Este MVP no sustituye formación oficial. Llama al 112 ante cualquier duda.</small>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
