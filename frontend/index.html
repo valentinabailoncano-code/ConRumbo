@@ -2,29 +2,42 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
   <title>ConRumbo — MVP</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#111827">
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
 <header>
   <h1>ConRumbo — Primeros Auxilios con IA</h1>
-  <div id="status">API: <span id="apiStatus">comprobando…</span> | Modo: <span id="mode">online</span></div>
+  <div id="status">API: <span id="apiStatus">…</span> | <span id="mode">online</span></div>
 </header>
 
 <main>
   <section class="panel">
-    <h2>1) Activa por voz o botón</h2>
-    <div class="controls">
-      <button id="btnSpeak">🎙️ Mantén pulsado para hablar</button>
-      <input id="manualText" type="text" placeholder="O escribe: 'no respira', 'atragantamiento'…"/>
-      <button id="btnSend">Enviar</button>
+    <div class="row space">
+      <div>
+        <h2>1) Activa por voz o botón</h2>
+        <div class="controls">
+          <button id="btnSpeak">🎙️ Mantén pulsado para hablar</button>
+          <input id="manualText" type="text" placeholder="‘no respira’, ‘atragantamiento’…" />
+          <button id="btnSend">Enviar</button>
+        </div>
+        <p id="heard">🗣️ Dije: —</p>
+      </div>
+
+      <div class="sos">
+        <a id="btn112" href="tel:112">🚨 Llamar 112</a>
+        <button id="btnHands">👐 Manos libres: OFF</button>
+        <button id="btnMetronome">🫀 RCP 110 bpm: OFF</button>
+      </div>
     </div>
-    <p id="heard">🗣️ Dije: —</p>
   </section>
 
   <section class="panel">
     <h2>2) Bot IA — Guía Paso a Paso</h2>
+    <div id="disamb" class="disamb hidden"></div>
     <div id="protoTitle" class="title"></div>
     <ol id="steps"></ol>
     <div class="step-controls">
@@ -34,14 +47,23 @@
   </section>
 
   <section class="panel">
-    <h2>📴 Modo Offline (fallback)</h2>
-    <p>Si falla la API, se usarán protocolos locales guardados en el navegador.</p>
+    <h2>🌓 Accesibilidad</h2>
+    <div class="controls">
+      <button id="btnContrast">Alto contraste</button>
+      <button id="btnLang">Idioma: ES</button>
+      <button id="btnInstall" class="hidden">Instalar app (PWA)</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>📴 Modo Offline (PWA)</h2>
+    <p>Funciona sin conexión: protocolos y UI se guardan localmente.</p>
   </section>
 
   <section class="panel">
     <h2>📊 Feedback</h2>
-    <textarea id="feedback" placeholder="¿Fue clara la instrucción? ¿Cuántos segundos tardaste en actuar?"></textarea>
-    <button id="btnSaveFb">Guardar nota local</button>
+    <textarea id="feedback" placeholder="¿Fue clara la instrucción? ¿Tiempo hasta actuar?"></textarea>
+    <button id="btnSendFb">Enviar feedback</button>
   </section>
 </main>
 

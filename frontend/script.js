@@ -1,4 +1,10 @@
-const API_BASE = "http://localhost:8000/api";
+// ----- Config API dinámica (PC vs móvil) -----
+const LAN_FALLBACK = "http://127.0.0.1:8000/api";
+const API_BASE = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+  ? LAN_FALLBACK
+  : `http://${location.hostname}:8000/api`; // abrir en móvil usando IP del PC
+
+// ----- Selectores -----
 const heard = document.getElementById("heard");
 const apiStatus = document.getElementById("apiStatus");
 const mode = document.getElementById("mode");
@@ -9,15 +15,67 @@ const stepsList = document.getElementById("steps");
 const protoTitle = document.getElementById("protoTitle");
 const btnPrev = document.getElementById("btnPrev");
 const btnNext = document.getElementById("btnNext");
-const btnSaveFb = document.getElementById("btnSaveFb");
+const btnHands = document.getElementById("btnHands");
+const btnMetronome = document.getElementById("btnMetronome");
+const btnContrast = document.getElementById("btnContrast");
+const btnLang = document.getElementById("btnLang");
+const btnInstall = document.getElementById("btnInstall");
+const btnSendFb = document.getElementById("btnSendFb");
 const feedback = document.getElementById("feedback");
+const disambBox = document.getElementById("disamb");
 
 let currentProtocol = null;
 let stepIndex = 0;
 let steps = [];
 let sessionId = crypto.randomUUID();
+let handsFree = false;
+let handsTimer = null;
+let lang = localStorage.getItem("cr_lang") || "es";
+let highContrast = false;
 
-// Comprobar API
+// ----- i18n muy simple -----
+const STR = {
+  es: {
+    next: "Siguiente paso",
+    prev: "Paso anterior",
+    confirmCritical: "Este paso es sensible. ¿Deseas continuar?",
+    lowConfidence: "¿Es esto lo que ocurre? Elige para confirmar:",
+    protoUnknown: "Sin conexión: protocolo reducido.",
+  },
+  en: {
+    next: "Next step",
+    prev: "Previous step",
+    confirmCritical: "This step is sensitive. Do you want to continue?",
+    lowConfidence: "Is this what's happening? Tap to confirm:",
+    protoUnknown: "Offline: reduced protocol.",
+  }
+};
+const T = (k)=> (STR[lang][k] || STR.es[k]);
+
+// ----- PWA: registrar SW -----
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js");
+  });
+}
+
+// Detectar instalable (PWA)
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  btnInstall.classList.remove('hidden');
+});
+btnInstall.addEventListener('click', async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    btnInstall.classList.add('hidden');
+  }
+});
+
+// ----- Ping API -----
 fetch(`${API_BASE}/health`).then(()=> {
   apiStatus.textContent = "online ✅";
   mode.textContent = "online";
@@ -26,32 +84,11 @@ fetch(`${API_BASE}/health`).then(()=> {
   mode.textContent = "offline";
 });
 
-// Cargar protocolos locales para fallback
-async function loadLocalProtocols() {
-  // Versión mínima local (debe coincidir con backend/protocols.json si es posible)
-  const local = {
-    "pa_no_respira_v1": { "title":"Parada respiratoria (local)", "steps":[
-      "Seguridad de la escena. Altavoz.",
-      "Comprobar respuesta y respiración.",
-      "Llamar 112 y empezar compresiones 100–120/min."
-    ]},
-    "pa_atragantamiento_v1": { "title":"Atragantamiento (local)", "steps":[
-      "Anima a toser.",
-      "5 golpes interescapulares.",
-      "5 compresiones abdominales."
-    ]}
-  };
-  localStorage.setItem("cr_protocols_local", JSON.stringify(local));
-}
-loadLocalProtocols();
-
+// ----- Utilidades -----
 function speak(text) {
-  try {
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "es-ES";
-    speechSynthesis.speak(u);
-  } catch (e) { /* sin TTS */ }
+  try { const u = new SpeechSynthesisUtterance(text); u.lang = (lang==='en'?'en-US':'es-ES'); speechSynthesis.speak(u); } catch {}
 }
+function vibrate(ms){ if (navigator.vibrate) navigator.vibrate(ms); }
 
 function renderSteps() {
   stepsList.innerHTML = "";
@@ -68,26 +105,83 @@ function setProtocol(title, arr) {
   steps = arr;
   stepIndex = 0;
   renderSteps();
-  if (steps[0]) speak(steps[0]);
+  if (steps[0]) { speak(steps[0]); }
 }
 
+// ----- Manos libres -----
+function startHandsFree(){
+  if (handsTimer) clearInterval(handsTimer);
+  handsTimer = setInterval(()=>{
+    // auto-avanza cada 25s (tiempo orientativo para ejecutar un paso)
+    if (stepIndex < steps.length-1) {
+      stepIndex++;
+      renderSteps(); speak(steps[stepIndex]); vibrate(100);
+    } else { stopHandsFree(); }
+  }, 25000);
+}
+function stopHandsFree(){ if (handsTimer) clearInterval(handsTimer); handsTimer=null; }
+
+// ----- Metrónomo 110 bpm -----
+let metroTimer=null, audioCtx=null;
+function beep(){
+  if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type="square"; o.frequency.value=880;
+  g.gain.setValueAtTime(0.2, audioCtx.currentTime);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+0.03);
+  vibrate(40);
+}
+function startMetronome(){
+  const interval = 60000/110; // 545ms aprox
+  if (metroTimer) clearInterval(metroTimer);
+  metroTimer = setInterval(beep, interval);
+}
+function stopMetronome(){ if (metroTimer) clearInterval(metroTimer); metroTimer=null; }
+
+// ----- Desambiguación y confirmaciones -----
+function showDisambiguation(options){
+  disambBox.innerHTML = `<p>${T('lowConfidence')}</p>`;
+  options.forEach(op=>{
+    const b=document.createElement('button'); b.textContent=op.label; 
+    b.onclick=()=> { disambBox.classList.add('hidden'); understandAndStart(op.example); };
+    disambBox.appendChild(b);
+  });
+  disambBox.classList.remove('hidden');
+}
+function isCriticalStep(text){
+  const keys = ["torniquete","ventilaciones","descarga","DEA","compresiones","abdominales"];
+  return keys.some(k=> text.toLowerCase().includes(k));
+}
+
+// ----- Entendimiento + carga de protocolo -----
 async function understandAndStart(text) {
   heard.textContent = "🗣️ Dije: " + text;
-  // Intent → protocolo
+
   try {
     const r = await fetch(`${API_BASE}/understand`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ utterance: text, lang:"es", session_id: sessionId })
+      body: JSON.stringify({ utterance: text, lang, session_id: sessionId })
     });
     if (!r.ok) throw new Error("API error");
     const j = await r.json();
-    currentProtocol = j.protocol_id;
 
-    // Obtener protocolo completo del backend
+    // Desambiguación si confianza < 0.8
+    if (j.confidence < 0.8) {
+      showDisambiguation([
+        {label:"No respira", example:"no respira"},
+        {label:"Atragantamiento", example:"se atraganta"},
+        {label:"Sangra mucho", example:"mucha sangre"}
+      ]);
+    } else {
+      disambBox.classList.add('hidden');
+    }
+
+    currentProtocol = j.protocol_id;
     const r2 = await fetch(`${API_BASE}/protocol`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
+      method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({ protocol_id: currentProtocol })
     });
 
@@ -99,92 +193,90 @@ async function understandAndStart(text) {
       throw new Error("protocol not found");
     }
   } catch (e) {
-    // Fallback offline
     mode.textContent = "offline";
     const cache = localStorage.getItem("last_protocol");
-    const locals = localStorage.getItem("cr_protocols_local");
     if (cache) {
       const p = JSON.parse(cache);
       setProtocol(p.title + " (cache)", p.steps);
-    } else if (locals) {
-      // heurística: si texto contiene “atragant” usa atragantamiento; si “respira” usa no respira
-      const L = JSON.parse(locals);
-      const pick = text.includes("atragant") ? "pa_atragantamiento_v1" : "pa_no_respira_v1";
-      const p = L[pick];
-      setProtocol(p.title, p.steps);
     } else {
-      setProtocol("Sin conexión", ["No hay protocolos disponibles."]);
+      setProtocol(T('protoUnknown'), ["Llama al 112.", "Comprueba respiración.", "Inicia RCP si es necesario."]);
     }
   }
 }
 
+// ----- Eventos UI -----
 btnSend.addEventListener("click", ()=> {
   const t = manualText.value.trim();
   if (t) understandAndStart(t);
 });
-
 btnPrev.addEventListener("click", ()=>{
-  if (stepIndex > 0) {
-    stepIndex -= 1;
-    renderSteps();
-    speak(steps[stepIndex]);
-  }
+  if (stepIndex > 0) { stepIndex -= 1; renderSteps(); speak(steps[stepIndex]); }
 });
-
 btnNext.addEventListener("click", async ()=>{
-  // Si estamos online, pedimos siguiente paso al backend para contar métricas
-  if (mode.textContent === "online" && currentProtocol) {
+  // Confirmación crítica
+  const nextIdx = Math.min(stepIndex+1, steps.length-1);
+  if (isCriticalStep(steps[nextIdx])) {
+    if (!confirm(T('confirmCritical'))) return;
+  }
+
+  if (mode.textContent.includes("online") && currentProtocol) {
     try {
       const r = await fetch(`${API_BASE}/next_step`, {
         method: "POST",
         headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-          protocol_id: currentProtocol,
-          current_step: stepIndex,
-          session_id: sessionId
-        })
+        body: JSON.stringify({ protocol_id: currentProtocol, current_step: stepIndex, session_id: sessionId })
       });
       const j = await r.json();
       stepIndex = j.step_index;
-    } catch (e) {
-      stepIndex = Math.min(stepIndex + 1, steps.length - 1);
-    }
-  } else {
-    stepIndex = Math.min(stepIndex + 1, steps.length - 1);
-  }
-  renderSteps();
-  speak(steps[stepIndex]);
+    } catch { stepIndex = nextIdx; }
+  } else { stepIndex = nextIdx; }
+  renderSteps(); speak(steps[stepIndex]); vibrate(80);
 });
 
-// Voz del navegador (mantener pulsado)
+btnHands.addEventListener("click", ()=>{
+  handsFree = !handsFree;
+  if (handsFree){ btnHands.textContent="👐 Manos libres: ON"; startHandsFree(); }
+  else { btnHands.textContent="👐 Manos libres: OFF"; stopHandsFree(); }
+});
+
+btnMetronome.addEventListener("click", ()=>{
+  if (metroTimer){ stopMetronome(); btnMetronome.textContent="🫀 RCP 110 bpm: OFF"; }
+  else { startMetronome(); btnMetronome.textContent="🫀 RCP 110 bpm: ON"; }
+});
+
+btnContrast.addEventListener("click", ()=>{
+  highContrast = !highContrast;
+  document.documentElement.classList.toggle("high-contrast", highContrast);
+});
+
+btnLang.addEventListener("click", ()=>{
+  lang = (lang === "es" ? "en" : "es");
+  localStorage.setItem("cr_lang", lang);
+  btnLang.textContent = "Idioma: " + (lang.toUpperCase());
+  alert(lang==="es" ? "Idioma cambiado a Español" : "Language set to English");
+});
+
+btnSendFb.addEventListener("click", async ()=>{
+  try{
+    await fetch(`${API_BASE}/feedback`, { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ session_id: sessionId, notes: feedback.value }) });
+    feedback.value=""; alert("Gracias por tu feedback ✅");
+  }catch{ alert("No se pudo enviar (offline)."); }
+});
+
+// ----- Voz del navegador -----
 let recognition;
 if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognition = new SR();
-  recognition.lang = "es-ES";
+  recognition.lang = (lang==='en'?'en-US':'es-ES');
   recognition.interimResults = false;
-
   btnSpeak.addEventListener("mousedown", ()=> recognition.start());
-  btnSpeak.addEventListener("touchstart", ()=> recognition.start());
+  btnSpeak.addEventListener("touchstart", ()=> recognition.start(), {passive:true});
   btnSpeak.addEventListener("mouseup", ()=> recognition.stop());
   btnSpeak.addEventListener("touchend", ()=> recognition.stop());
-
-  recognition.onresult = (e)=>{
-    const text = e.results[0][0].transcript;
-    manualText.value = text;
-    understandAndStart(text);
-  };
-  recognition.onerror = ()=> { /* silencio */ };
+  recognition.onresult = (e)=>{ const text = e.results[0][0].transcript; manualText.value = text; understandAndStart(text); };
+  recognition.onerror = ()=> {};
 } else {
   btnSpeak.disabled = true;
-  btnSpeak.textContent = "🎙️ Voz no soportada";
-}
-
-// Guardar feedback local
-btnSaveFb.addEventListener("click", ()=>{
-  const notes = JSON.parse(localStorage.getItem("cr_feedback") || "[]");
-  notes.push({ ts: new Date().toISOString(), sessionId, feedback: feedback.value });
-  localStorage.setItem("cr_feedback", JSON.stringify(notes));
-  feedback.value = "";
-  alert("Feedback guardado localmente ✅");
-});
+  btnSpeak.textContent = "🎙️ Voz no soportada";}
