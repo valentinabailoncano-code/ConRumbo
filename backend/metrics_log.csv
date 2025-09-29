@@ -1,0 +1,10 @@
+ts_iso,event,session_id,user_text,intent,confidence,protocol_id,step_index,latency_ms
+2025-09-16T07:37:47Z,understand,cd276db3-0fbd-4953-80df-188f1c108c15,no respira,parada_respiratoria,0.95,,,0
+2025-09-16T08:33:55Z,understand,5b56d58f-ecaa-4a0d-8d4c-a1f4877f6c0d,no respira,parada_respiratoria,0.95,,,0
+2025-09-16T08:39:56Z,next_step,5b56d58f-ecaa-4a0d-8d4c-a1f4877f6c0d,,,,pa_no_respira_v1,1,0
+2025-09-16T08:39:58Z,next_step,5b56d58f-ecaa-4a0d-8d4c-a1f4877f6c0d,,,,pa_no_respira_v1,2,0
+2025-09-16T08:39:58Z,next_step,5b56d58f-ecaa-4a0d-8d4c-a1f4877f6c0d,,,,pa_no_respira_v1,3,0
+2025-09-16T08:40:02Z,next_step,5b56d58f-ecaa-4a0d-8d4c-a1f4877f6c0d,,,,pa_no_respira_v1,4,0
+2025-09-16T08:40:06Z,next_step,5b56d58f-ecaa-4a0d-8d4c-a1f4877f6c0d,,,,pa_no_respira_v1,5,0
+2025-09-16T08:40:07Z,next_step,5b56d58f-ecaa-4a0d-8d4c-a1f4877f6c0d,,,,pa_no_respira_v1,6,0
+2025-09-16T08:40:08Z,next_step,5b56d58f-ecaa-4a0d-8d4c-a1f4877f6c0d,,,,pa_no_respira_v1,7,0
