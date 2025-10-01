@@ -1,6 +1,25 @@
 'use strict';
 
-const API_BASE = 'http://127.0.0.1:8000/api';
+// Resolve API base dynamically so mobile devices reach the backend.
+const API_BASE = (() => {
+  const override = (typeof window !== 'undefined' && (
+    window.CONRUMBO_API_BASE ||
+    new URLSearchParams(window.location.search).get('api_base') ||
+    window.localStorage?.getItem('conrumbo.apiBase')
+  )) || null;
+
+  if (override) {
+    const clean = override.replace(/\/$/, '');
+    return clean.endsWith('/api') ? clean : `${clean}/api`;
+  }
+
+  const { protocol, hostname } = window.location;
+  const apiPort = 8000;
+  const safeProtocol = protocol === 'https:' ? 'https:' : 'http:';
+  const resolvedHost = hostname || '127.0.0.1';
+  const portSegment = apiPort ? `:${apiPort}` : '';
+  return `${safeProtocol}//${resolvedHost}${portSegment}/api`;
+})();
 const EMERGENCY_NUMBER = '112';
 const TEST_NUMBER = '689876686';
 const CALL_KEYWORDS = ['llamar', 'emergencia', '112', 'ambulancia', 'ayuda', 'socorro'];
