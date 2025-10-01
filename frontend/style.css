@@ -216,6 +216,92 @@ h1,
   }
 }
 
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 100;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal__content {
+  position: relative;
+  background: #fff;
+  border-radius: 24px;
+  padding: 32px 28px;
+  width: min(420px, 90%);
+  text-align: center;
+  box-shadow: 0 30px 55px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.modal__close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  border: none;
+  background: #e5e7eb;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.modal__number {
+  font-size: clamp(48px, 10vw, 68px);
+  font-weight: 700;
+  margin: 0;
+  color: var(--danger);
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.modal__actions button,
+.modal__actions a {
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.modal__actions button {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.modal__actions a {
+  background: #f97316;
+  color: #fff;
+}
+
+.modal__qr {
+  width: 180px;
+  height: 180px;
+  margin: 0 auto;
+}
+
+.modal__hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0;
+}
+
 @media (max-width: 768px) {
   .app {
     padding: 24px 16px 48px;

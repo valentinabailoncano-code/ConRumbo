@@ -1,17 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-import os
 from time import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-
-try:
-    from twilio.rest import Client  # type: ignore
-except ImportError:  # pragma: no cover - el despliegue debe tener twilio instalado
-    Client = None  # type: ignore
 
 from nlp_processor import classify_text
 from emergency_bot import BotEngine
@@ -164,32 +158,6 @@ def feedback():
         latency_ms="",
     )
     return jsonify({"ok": True})
-
-
-@app.route("/api/call", methods=["POST"])
-def call():
-    data = request.get_json(force=True) or {}
-    to_number = (data.get("to") or "").strip()
-    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-    from_number = os.environ.get("TWILIO_FROM")
-
-    if not all([account_sid, auth_token, from_number, to_number]):
-        return {"error": "Missing parameters"}, 400
-
-    if Client is None:
-        return {"error": "Twilio SDK no está instalado en el servidor."}, 500
-
-    try:
-        client: Optional[Client] = Client(account_sid, auth_token)  # type: ignore[call-arg]
-        call = client.calls.create(
-            to=f"+34{to_number}",
-            from_=from_number,
-            twiml="<Response><Say>Esta es una llamada de prueba desde ConRumbo MVP.</Say></Response>",
-        )
-        return {"status": "calling", "sid": call.sid}
-    except Exception as e:  # pragma: no cover - dependencias externas
-        return {"error": str(e)}, 500
 
 
 if __name__ == "__main__":

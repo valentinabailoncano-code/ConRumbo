@@ -1,6 +1,8 @@
 'use strict';
 
 const API_BASE = 'http://127.0.0.1:8000/api';
+const EMERGENCY_NUMBER = '112';
+const TEST_NUMBER = '689876686';
 const CALL_KEYWORDS = ['llamar', 'emergencia', '112', 'ambulancia', 'ayuda', 'socorro'];
 
 const btnMic = document.getElementById('btnMic');
@@ -10,6 +12,13 @@ const stepsListEl = document.getElementById('stepsList');
 const call112Btn = document.getElementById('btnCall112');
 const callTestBtn = document.getElementById('btnCallTest');
 const callButtons = [call112Btn, callTestBtn].filter(Boolean);
+
+const modal = document.getElementById('callModal');
+const modalClose = document.getElementById('modalClose');
+const modalNumber = document.getElementById('modalNumber');
+const modalTelLink = document.getElementById('modalTelLink');
+const copyNumberBtn = document.getElementById('copyNumber');
+const qrCanvas = document.getElementById('qrCanvas');
 
 const sessionId = (crypto && typeof crypto.randomUUID === 'function')
   ? crypto.randomUUID()
@@ -29,11 +38,13 @@ let pendingController = null;
 
 initSpeech();
 checkHealth();
+setupCallUi();
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     stopListening();
     stopSpeaking();
+    hideModal();
   }
 });
 
@@ -49,29 +60,80 @@ btnMic.addEventListener('click', () => {
   }
 });
 
-window.callTest = async function callTest() {
-  const number = '689876686';
+callTestBtn.addEventListener('click', () => handleCallClick(TEST_NUMBER));
+
+function setupCallUi() {
+  if (call112Btn) {
+    call112Btn.addEventListener('click', (event) => {
+      if (!isMobile()) {
+        event.preventDefault();
+        handleCallClick(EMERGENCY_NUMBER);
+      }
+    });
+  }
+
+  modalClose.addEventListener('click', hideModal);
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) {
+      hideModal();
+    }
+  });
+
+  copyNumberBtn.addEventListener('click', async () => {
+    const number = modalNumber.textContent || '';
+    try {
+      await navigator.clipboard.writeText(number);
+      copyNumberBtn.textContent = 'Copiado ✓';
+      setTimeout(() => {
+        copyNumberBtn.textContent = 'Copiar número';
+      }, 1800);
+    } catch (error) {
+      setStatus('No se pudo copiar el número.');
+    }
+  });
+}
+
+function openModal(number) {
+  modalNumber.textContent = number;
+  modalTelLink.href = `tel:${number}`;
+  modalTelLink.textContent = `Abrir marcador (${number})`;
+  generateQr(`tel:${number}`);
+  modal.classList.remove('hidden');
+}
+
+function hideModal() {
+  modal.classList.add('hidden');
+}
+
+function handleCallClick(number) {
   if (isMobile()) {
-    setStatus('Abriendo marcador...');
     window.location.href = `tel:${number}`;
     return;
   }
-  setStatus('Solicitando llamada de prueba...');
-  try {
-    const response = await fetch(`${API_BASE}/call`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: number })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload.error || 'No se pudo iniciar la llamada.');
-    }
-    setStatus('Llamada de prueba en curso.');
-  } catch (error) {
-    setStatus(`Error al iniciar la llamada: ${error.message}`);
+  openModal(number);
+}
+
+function generateQr(data) {
+  const size = qrCanvas.width = qrCanvas.height = 180;
+  const ctx = qrCanvas.getContext('2d');
+  if (!ctx) {
+    return;
   }
-};
+  ctx.clearRect(0, 0, size, size);
+  // Placeholder QR: simple pattern (no dependencies). Real QR generation can replace this.
+  ctx.fillStyle = '#0f172a';
+  for (let y = 0; y < size; y += 12) {
+    for (let x = 0; x < size; x += 12) {
+      const hash = (x * 13 + y * 7 + data.length * 11) % 5;
+      if (hash === 0) {
+        ctx.fillRect(x, y, 10, 10);
+      }
+    }
+  }
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, size - 4, size - 4);
+}
 
 function initSpeech() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;

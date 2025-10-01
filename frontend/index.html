@@ -26,7 +26,7 @@
 
     <section class="card actions">
       <a id="btnCall112" class="call-button mobile-only" href="tel:112">🚨 Llamar 112</a>
-      <button id="btnCallTest" class="call-button" type="button" onclick="callTest()">Llamar TEST (689876686)</button>
+      <button id="btnCallTest" class="call-button" type="button">Llamar TEST (689876686)</button>
     </section>
 
     <section class="card steps">
@@ -38,5 +38,19 @@
       <p class="disclaimer">Este MVP no sustituye asistencia médica profesional. Llama al 112 ante cualquier duda.</p>
     </footer>
   </main>
+
+  <div id="callModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal__content">
+      <button id="modalClose" class="modal__close" aria-label="Cerrar">×</button>
+      <h2 id="modalTitle">Llamada de Emergencia</h2>
+      <p class="modal__number" id="modalNumber">112</p>
+      <div class="modal__actions">
+        <button id="copyNumber" type="button">Copiar número</button>
+        <a id="modalTelLink" class="modal__tel" href="tel:112">Abrir marcador</a>
+      </div>
+      <canvas id="qrCanvas" class="modal__qr" aria-hidden="true"></canvas>
+      <p class="modal__hint">Escanea el código QR con tu móvil para llamar rápidamente.</p>
+    </div>
+  </div>
 </body>
 </html>
