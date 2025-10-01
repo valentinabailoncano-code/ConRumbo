@@ -1,0 +1,22 @@
+# === ENTORNOS VIRTUALES ===
+backend/.venv/
+backend/venv/
+backend/ENV/
+
+# === CACHÉ DE PYTHON ===
+backend/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# === ARCHIVOS TEMPORALES ===
+*.log
+
+# Ignorar todos los CSV por defecto...
+*.csv
+# ...pero permitir metrics_log.csv si quieres versionarlo
+!backend/metrics_log.csv
+
+# === ARCHIVOS DEL SISTEMA ===
+.DS_Store
+Thumbs.db
