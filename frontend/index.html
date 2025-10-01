@@ -1,76 +1,42 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-  <title>ConRumbo — MVP</title>
-  <link rel="manifest" href="manifest.webmanifest">
-  <meta name="theme-color" content="#111827">
-  <link rel="stylesheet" href="style.css"/>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ConRumbo — Asistente de Emergencias (MVP)</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./script.js" defer></script>
 </head>
 <body>
-<header>
-  <h1>ConRumbo — Primeros Auxilios con IA</h1>
-  <div id="status">API: <span id="apiStatus">…</span> | <span id="mode">online</span></div>
-</header>
+  <main class="app">
+    <header class="app__header">
+      <h1>ConRumbo — Asistente de Emergencias (MVP)</h1>
+      <p id="status" class="status">Inicializando...</p>
+    </header>
 
-<main>
-  <section class="panel">
-    <div class="row space">
-      <div>
-        <h2>1) Activa por voz o botón</h2>
-        <div class="controls">
-          <button id="btnSpeak">🎙️ Mantén pulsado para hablar</button>
-          <input id="manualText" type="text" placeholder="‘no respira’, ‘atragantamiento’…" />
-          <button id="btnSend">Enviar</button>
-        </div>
-        <p id="heard">🗣️ Dije: —</p>
-      </div>
+    <section class="card controls">
+      <button id="btnMic" type="button" class="mic-button">🎙️ Iniciar</button>
+      <p class="hint">Pulsa para activar o detener el micrófono.</p>
+    </section>
 
-      <div class="sos">
-        <a id="btn112" href="tel:112">🚨 Llamar 112</a>
-        <button id="btnHands">👐 Manos libres: OFF</button>
-        <button id="btnMetronome">🫀 RCP 110 bpm: OFF</button>
-      </div>
-    </div>
-  </section>
+    <section class="card transcription">
+      <h2>Transcripción en vivo</h2>
+      <p id="liveText" class="live-text">—</p>
+    </section>
 
-  <section class="panel">
-    <h2>2) Bot IA — Guía Paso a Paso</h2>
-    <div id="disamb" class="disamb hidden"></div>
-    <div id="protoTitle" class="title"></div>
-    <ol id="steps"></ol>
-    <div class="step-controls">
-      <button id="btnPrev">◀️ Paso anterior</button>
-      <button id="btnNext">Siguiente paso ▶️</button>
-    </div>
-  </section>
+    <section class="card actions">
+      <a id="btnCall112" class="call-button mobile-only" href="tel:112">🚨 Llamar 112</a>
+      <button id="btnCallTest" class="call-button" type="button" onclick="callTest()">Llamar TEST (689876686)</button>
+    </section>
 
-  <section class="panel">
-    <h2>🌓 Accesibilidad</h2>
-    <div class="controls">
-      <button id="btnContrast">Alto contraste</button>
-      <button id="btnLang">Idioma: ES</button>
-      <button id="btnInstall" class="hidden">Instalar app (PWA)</button>
-    </div>
-  </section>
+    <section class="card steps">
+      <h2>Instrucciones recientes</h2>
+      <ol id="stepsList" class="steps-list"></ol>
+    </section>
 
-  <section class="panel">
-    <h2>📴 Modo Offline (PWA)</h2>
-    <p>Funciona sin conexión: protocolos y UI se guardan localmente.</p>
-  </section>
-
-  <section class="panel">
-    <h2>📊 Feedback</h2>
-    <textarea id="feedback" placeholder="¿Fue clara la instrucción? ¿Tiempo hasta actuar?"></textarea>
-    <button id="btnSendFb">Enviar feedback</button>
-  </section>
-</main>
-
-<footer>
-  <small>Este MVP no sustituye formación oficial. Llama al 112 ante cualquier duda.</small>
-</footer>
-
-<script src="script.js"></script>
+    <footer class="app__footer">
+      <p class="disclaimer">Este MVP no sustituye asistencia médica profesional. Llama al 112 ante cualquier duda.</p>
+    </footer>
+  </main>
 </body>
 </html>
