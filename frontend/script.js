@@ -12,6 +12,7 @@ const stepsListEl = document.getElementById('stepsList');
 const call112Btn = document.getElementById('btnCall112');
 const callTestBtn = document.getElementById('btnCallTest');
 const callButtons = [call112Btn, callTestBtn].filter(Boolean);
+const micLabel = btnMic ? btnMic.querySelector('.mic-card__label') : null;
 
 const modal = document.getElementById('callModal');
 const modalClose = document.getElementById('modalClose');
@@ -60,7 +61,9 @@ btnMic.addEventListener('click', () => {
   }
 });
 
-callTestBtn.addEventListener('click', () => handleCallClick(TEST_NUMBER));
+if (callTestBtn) {
+  callTestBtn.addEventListener('click', () => handleCallClick(TEST_NUMBER));
+}
 
 function setupCallUi() {
   if (call112Btn) {
@@ -83,14 +86,33 @@ function setupCallUi() {
     const number = modalNumber.textContent || '';
     try {
       await navigator.clipboard.writeText(number);
-      copyNumberBtn.textContent = 'Copiado ✓';
+      copyNumberBtn.textContent = 'Copiado';
       setTimeout(() => {
-        copyNumberBtn.textContent = 'Copiar número';
+        copyNumberBtn.textContent = 'Copiar numero';
       }, 1800);
     } catch (error) {
-      setStatus('No se pudo copiar el número.');
+      setStatus('No se pudo copiar el numero.');
     }
   });
+}
+
+function setMicState(state) {
+  if (!btnMic) {
+    return;
+  }
+  const isListening = state === 'listening';
+  const isUnavailable = state === 'unavailable';
+  const label = isUnavailable ? 'No disponible' : (isListening ? 'Detener' : 'Iniciar');
+
+  btnMic.classList.toggle('is-listening', isListening);
+  btnMic.disabled = isUnavailable;
+  btnMic.setAttribute('aria-pressed', isListening ? 'true' : 'false');
+
+  if (micLabel) {
+    micLabel.textContent = label;
+  } else {
+    btnMic.textContent = label;
+  }
 }
 
 function openModal(number) {
@@ -139,8 +161,7 @@ function initSpeech() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
     setStatus('El reconocimiento de voz no es compatible con este dispositivo.');
-    btnMic.disabled = true;
-    btnMic.textContent = 'Micrófono no disponible';
+    setMicState('unavailable');
     return;
   }
 
@@ -152,20 +173,22 @@ function initSpeech() {
   recognition.addEventListener('result', onSpeechResult);
   recognition.addEventListener('start', () => {
     setStatus('Escuchando...');
-    btnMic.textContent = '⏹️ Detener';
+    setMicState('listening');
   });
   recognition.addEventListener('end', () => {
     if (listening) {
       recognition.start();
     } else {
-      setStatus('Micrófono detenido.');
-      btnMic.textContent = '🎙️ Iniciar';
+      setStatus('Microfono detenido.');
+      setMicState('ready');
     }
   });
   recognition.addEventListener('error', (event) => {
-    setStatus(`Error del micrófono: ${event.error}`);
+    setStatus('Error del microfono: ' + event.error);
     stopListening();
   });
+
+  setMicState('ready');
 }
 
 function startListening() {
@@ -177,12 +200,13 @@ function startListening() {
   playBeep(880, 0.12);
   try {
     recognition.start();
-    setStatus('Activando micrófono...');
+    setStatus('Activando microfono...');
+    setMicState('listening');
   } catch (error) {
     listening = false;
-    setStatus(`No se pudo iniciar el micrófono: ${error.message}`);
+    setStatus('No se pudo iniciar el microfono: ' + error.message);
+    setMicState('ready');
   }
-  btnMic.textContent = '⏹️ Detener';
 }
 
 function stopListening() {
@@ -191,8 +215,8 @@ function stopListening() {
   }
   if (!listening) {
     playBeep(440, 0.12);
-    setStatus('Micrófono detenido.');
-    btnMic.textContent = '🎙️ Iniciar';
+    setStatus('Microfono detenido.');
+    setMicState('ready');
     return;
   }
   listening = false;
@@ -202,8 +226,8 @@ function stopListening() {
     // Ignorar
   }
   playBeep(440, 0.12);
-  setStatus('Micrófono detenido.');
-  btnMic.textContent = '🎙️ Iniciar';
+  setStatus('Microfono detenido.');
+  setMicState('ready');
 }
 
 function onSpeechResult(event) {
@@ -242,7 +266,7 @@ async function processUtterance(text) {
   pendingController = supportsAbortController ? new AbortController() : null;
 
   stopSpeaking();
-  setStatus('Procesando instrucción...');
+  setStatus('Procesando instruccion...');
 
   try {
     const understandResponse = await fetch(`${API_BASE}/understand`, {
@@ -284,14 +308,14 @@ async function processUtterance(text) {
     currentContext = nextStepData.context || currentContext;
     protocolTitle = nextStepData.title || protocolTitle;
 
-    const stepText = nextStepData.step_text || 'No hay más instrucciones disponibles.';
+    const stepText = nextStepData.step_text || 'No hay mas instrucciones disponibles.';
     renderStep(stepText, protocolTitle, nextStepData.context?.step_index ?? null, nextStepData.total_steps);
     speak(stepText);
 
     if (nextStepData.done) {
       setStatus('Protocolo completado. Espera ayuda profesional.');
     } else {
-      setStatus('Instrucción lista. Puedes continuar hablando.');
+      setStatus('Instruccion lista. Puedes continuar hablando.');
     }
   } catch (error) {
     if (error.name === 'AbortError') {
@@ -311,7 +335,7 @@ function renderStep(text, title, stepIndex, totalSteps) {
   const heading = document.createElement('strong');
   const meta = document.createElement('span');
 
-  heading.textContent = title || 'Instrucción';
+  heading.textContent = title || 'Instruccion';
   meta.className = 'step-meta';
 
   if (typeof stepIndex === 'number' && typeof totalSteps === 'number' && totalSteps > 0 && stepIndex >= 0) {
@@ -418,7 +442,7 @@ async function checkHealth() {
     if (!response.ok) {
       throw new Error();
     }
-    setStatus('Sistema listo. Pulsa el micrófono para comenzar.');
+    setStatus('Sistema listo. Pulsa el microfono para comenzar.');
   } catch (error) {
     setStatus('No se pudo conectar con la API. Comprueba el servidor.');
   }

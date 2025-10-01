@@ -3,53 +3,87 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ConRumbo — Asistente de Emergencias (MVP)</title>
+  <title>ConRumbo &mdash; Asistente de Emergencias (MVP)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./style.css">
   <script src="./script.js" defer></script>
 </head>
 <body>
-  <main class="app">
-    <header class="app__header">
-      <h1>ConRumbo — Asistente de Emergencias (MVP)</h1>
-      <p id="status" class="status">Inicializando...</p>
+  <main class="app-shell">
+    <header class="topbar">
+      <span class="brand">ConRumbo</span>
     </header>
 
-    <section class="card controls">
-      <button id="btnMic" type="button" class="mic-button">🎙️ Iniciar</button>
-      <p class="hint">Pulsa para activar o detener el micrófono.</p>
+    <section class="intro">
+      <h1>Mant&#233;n la calma.<br>Te guiar&#233; paso a paso.</h1>
+      <p id="status" class="intro__status">Inicializando...</p>
     </section>
 
-    <section class="card transcription">
-      <h2>Transcripción en vivo</h2>
-      <p id="liveText" class="live-text">—</p>
+    <section class="card mic-card">
+      <button id="btnMic" type="button" class="mic-card__button">
+        <span class="mic-card__icon" aria-hidden="true"></span>
+        <span class="mic-card__label">Iniciar</span>
+      </button>
+      <div class="mic-card__content">
+        <h2>Estoy aqu&#237; para ayudarte. &#191;Cu&#225;l es la situaci&#243;n?</h2>
+        <p class="mic-card__subtitle">ConRumbo Bot</p>
+        <div class="mic-card__transcription">
+          <span class="mic-card__transcription-label">Transcripci&#243;n en vivo</span>
+          <p id="liveText" class="mic-card__live-text">&mdash;</p>
+        </div>
+      </div>
     </section>
 
-    <section class="card actions">
-      <a id="btnCall112" class="call-button mobile-only" href="tel:689876668">🚨 Llamar 112</a>
-      <button id="btnCallTest" class="call-button" type="button">Llamar TEST (689876686)</button>
+    <section class="card vitals-card">
+      <div class="vitals-card__main">
+        <div class="vitals-card__badges">
+          <span class="vital-chip vital-chip--heart">
+            <span class="icon" aria-hidden="true"></span>
+            <span class="label">82 bpm</span>
+          </span>
+          <span class="vital-chip vital-chip--breath">
+            <span class="icon" aria-hidden="true"></span>
+            <span class="label">18 rpm</span>
+          </span>
+        </div>
+        <div class="vitals-card__portrait" role="img" aria-label="Paciente escaneada"></div>
+      </div>
+      <div class="vitals-card__footer">
+        <span class="status-pill status-pill--alert">Herida detectada</span>
+        <span class="status-pill status-pill--neutral">Scanner 3D activo</span>
+      </div>
     </section>
 
-    <section class="card steps">
-      <h2>Instrucciones recientes</h2>
+    <section class="card steps-card">
+      <header class="steps-card__header">
+        <h2>Instrucciones recientes</h2>
+        <button id="btnCallTest" type="button" class="cta-secondary">Llamar TEST (689876686)</button>
+      </header>
       <ol id="stepsList" class="steps-list"></ol>
     </section>
-
-    <footer class="app__footer">
-      <p class="disclaimer">Este MVP no sustituye asistencia médica profesional. Llama al 112 ante cualquier duda.</p>
-    </footer>
   </main>
+
+  <footer class="app-footer">
+    <a id="btnCall112" class="cta-primary" href="tel:112">
+      <span class="cta-primary__icon" aria-hidden="true"></span>
+      Llamar al 112
+    </a>
+    <p class="disclaimer">Este MVP no sustituye asistencia m&#233;dica profesional. Llama al 112 ante cualquier duda.</p>
+  </footer>
 
   <div id="callModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal__content">
-      <button id="modalClose" class="modal__close" aria-label="Cerrar">×</button>
+      <button id="modalClose" class="modal__close" aria-label="Cerrar">&times;</button>
       <h2 id="modalTitle">Llamada de Emergencia</h2>
       <p class="modal__number" id="modalNumber">112</p>
       <div class="modal__actions">
-        <button id="copyNumber" type="button">Copiar número</button>
+        <button id="copyNumber" type="button">Copiar n&#250;mero</button>
         <a id="modalTelLink" class="modal__tel" href="tel:112">Abrir marcador</a>
       </div>
       <canvas id="qrCanvas" class="modal__qr" aria-hidden="true"></canvas>
-      <p class="modal__hint">Escanea el código QR con tu móvil para llamar rápidamente.</p>
+      <p class="modal__hint">Escanea el c&#243;digo QR con tu m&#243;vil para llamar r&#225;pidamente.</p>
     </div>
   </div>
 </body>
