@@ -152,11 +152,6 @@ a:focus,
   background: rgba(255, 255, 255, 0.36);
 }
 
-.mic-card__button.is-listening .mic-card__icon::before,
-.mic-card__button.is-listening .mic-card__icon::after {
-  background: #ffffff;
-}
-
 .mic-card__icon {
   width: 48px;
   height: 48px;
@@ -166,26 +161,20 @@ a:focus,
   display: inline-flex;
   justify-content: center;
   align-items: center;
+  color: #ffffff;
 }
 
-.mic-card__icon::before {
-  content: '';
-  display: block;
-  width: 14px;
-  height: 22px;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
+.mic-card__icon::before,
 .mic-card__icon::after {
-  content: '';
-  position: absolute;
-  bottom: 10px;
-  width: 18px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ffffff;
+  content: none;
 }
+
+.mic-card__icon svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
 
 .mic-card__label {
   font-weight: 600;
@@ -447,12 +436,56 @@ a:focus,
   transform: translate(-35%, -50%) rotate(-45deg);
 }
 
+#btnCall112 {
+  background: linear-gradient(125deg, #ff1f1f 0%, #b30000 100%);
+  box-shadow: 0 28px 48px rgba(179, 0, 0, 0.45);
+}
+
+#btnCall112:hover {
+  box-shadow: 0 32px 54px rgba(179, 0, 0, 0.5);
+}
+
+#btnCall112:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+
+#btnCall112 .cta-primary__icon {
+  border-color: rgba(255, 255, 255, 0.85);
+}
+
 .disclaimer {
   margin: 0;
   text-align: center;
   color: rgba(20, 27, 46, 0.55);
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.footer-link {
+  margin-top: 14px;
+  border: none;
+  background: none;
+  color: var(--link);
+  text-decoration: underline;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s ease;
+}
+
+.footer-link:hover {
+  color: var(--accent-dark);
+}
+
+.footer-link:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+
+.footer-link--alert {
+  color: #b30000;
 }
 
 .pulse {

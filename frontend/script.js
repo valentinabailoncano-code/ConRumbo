@@ -31,6 +31,7 @@ const stepsListEl = document.getElementById('stepsList');
 const call112Btn = document.getElementById('btnCall112');
 const callTestBtn = document.getElementById('btnCallTest');
 const callButtons = [call112Btn, callTestBtn].filter(Boolean);
+const configureApiBtn = document.getElementById('btnConfigureApi');
 const micLabel = btnMic ? btnMic.querySelector('.mic-card__label') : null;
 
 const modal = document.getElementById('callModal');
@@ -59,6 +60,7 @@ let pendingController = null;
 initSpeech();
 checkHealth();
 setupCallUi();
+setupConfigUi();
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
@@ -115,6 +117,59 @@ function setupCallUi() {
   });
 }
 
+function setupConfigUi() {
+  if (!configureApiBtn) {
+    return;
+  }
+
+  const storedBase = (() => {
+    try {
+      return window.localStorage?.getItem('conrumbo.apiBase') || '';
+    } catch (error) {
+      console.warn('No se pudo leer la configuracion del servidor', error);
+      return '';
+    }
+  })();
+
+  if (storedBase) {
+    configureApiBtn.title = `Servidor actual: ${storedBase}`;
+  }
+
+  configureApiBtn.addEventListener('click', () => {
+    const currentBase = (window.localStorage?.getItem('conrumbo.apiBase') || storedBase || '').replace(/\/api$/, '');
+    const input = window.prompt('Introduce la URL base del backend (por ejemplo http://192.168.1.50:8000)', currentBase);
+    if (input === null) {
+      return;
+    }
+
+    const trimmed = input.trim();
+    if (!trimmed) {
+      try {
+        window.localStorage?.removeItem('conrumbo.apiBase');
+        configureApiBtn.classList.remove('footer-link--alert');
+        configureApiBtn.removeAttribute('title');
+      } catch (error) {
+        console.error('No se pudo limpiar la configuracion del servidor', error);
+      }
+      setStatus('Servidor predeterminado restablecido.');
+      setTimeout(() => window.location.reload(), 200);
+      return;
+    }
+
+    const normalized = trimmed.replace(/\/$/, '');
+    const final = normalized.endsWith('/api') ? normalized : `${normalized}/api`;
+
+    try {
+      window.localStorage?.setItem('conrumbo.apiBase', final);
+    } catch (error) {
+      console.error('No se pudo guardar la configuracion del servidor', error);
+    }
+
+    configureApiBtn.title = `Servidor actual: ${final}`;
+    setStatus('Servidor actualizado. Recargando...');
+    setTimeout(() => window.location.reload(), 200);
+  });
+}
 function setMicState(state) {
   if (!btnMic) {
     return;
@@ -462,7 +517,11 @@ async function checkHealth() {
       throw new Error();
     }
     setStatus('Sistema listo. Pulsa el microfono para comenzar.');
+    configureApiBtn?.classList.remove('footer-link--alert');
   } catch (error) {
-    setStatus('No se pudo conectar con la API. Comprueba el servidor.');
+    console.error('No se pudo verificar la API', error);
+    setStatus('No se pudo conectar con la API. Pulsa "Configurar servidor" e introduce la direccion correcta.');
+    configureApiBtn?.classList.add('footer-link--alert');
   }
+
 }
