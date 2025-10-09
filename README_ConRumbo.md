@@ -1,7 +1,5 @@
 # 🚑 ConRumbo – Asistente Inteligente de Primeros Auxilios
 
-![ConRumbo Preview](38193281-51c2-406f-9610-c2e1e1981f60.png)
-
 > “Mantén la calma. Te guiaré paso a paso.”
 
 **ConRumbo** es una aplicación educativa y de emergencia que combina **IA, reconocimiento visual** y **asistencia guiada** para ofrecer ayuda inmediata en situaciones críticas. Diseñada especialmente para **universitarios y jóvenes adultos**, su objetivo es enseñar y asistir en primeros auxilios de manera accesible, empática y tecnológica.
