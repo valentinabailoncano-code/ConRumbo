@@ -16,7 +16,13 @@ const API_BASE = (() => {
   const { protocol, hostname } = window.location;
   const apiPort = 8000;
   const safeProtocol = protocol === 'https:' ? 'https:' : 'http:';
-  const resolvedHost = hostname || '127.0.0.1';
+  const resolvedHost = (() => {
+    // Browsers keep the literal host the user typed; translate wildcard hosts to loopback.
+    if (!hostname || hostname === '0.0.0.0' || hostname === '[::]' || hostname === '::') {
+      return '127.0.0.1';
+    }
+    return hostname;
+  })();
   const portSegment = apiPort ? `:${apiPort}` : '';
   return `${safeProtocol}//${resolvedHost}${portSegment}/api`;
 })();
@@ -56,11 +62,20 @@ let currentIntent = null;
 let currentContext = null;
 let protocolTitle = '';
 let pendingController = null;
+let recognitionRestartHold = false;
+let recognitionShouldResume = false;
+let recognitionPausePromise = null;
+let recognitionPauseResolver = null;
+let voicesReady = false;
+let voicesReadyPromise = null;
+let speechWarmupDone = false;
+let speechWarmupPromise = null;
 
 initSpeech();
 checkHealth();
 setupCallUi();
 setupConfigUi();
+primeSpeechVoices();
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
@@ -70,7 +85,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-btnMic.addEventListener('click', () => {
+btnMic.addEventListener('click', async () => {
   if (!recognition) {
     setStatus('Reconocimiento de voz no disponible en este navegador.');
     return;
@@ -78,6 +93,11 @@ btnMic.addEventListener('click', () => {
   if (listening) {
     stopListening();
   } else {
+    try {
+      await ensureSpeechReady();
+    } catch (error) {
+      console.warn('No se pudo preparar la voz', error);
+    }
     startListening();
   }
 });
@@ -170,6 +190,122 @@ function setupConfigUi() {
     setTimeout(() => window.location.reload(), 200);
   });
 }
+
+function ensureVoicesReady() {
+  if (!('speechSynthesis' in window)) {
+    return Promise.resolve(false);
+  }
+  if (voicesReady) {
+    return Promise.resolve(true);
+  }
+  if (!voicesReadyPromise) {
+    const synth = window.speechSynthesis;
+    voicesReadyPromise = new Promise((resolve) => {
+      let timeoutId = null;
+      function cleanup() {
+        if (typeof synth.removeEventListener === 'function') {
+          synth.removeEventListener('voiceschanged', onVoicesChanged);
+        } else if ('onvoiceschanged' in synth) {
+          synth.onvoiceschanged = null;
+        }
+        if (timeoutId !== null) {
+          window.clearTimeout(timeoutId);
+        }
+      }
+      function finalize(ready) {
+        if (ready) {
+          voicesReady = true;
+        } else {
+          voicesReady = false;
+          voicesReadyPromise = null;
+        }
+        cleanup();
+        resolve(ready);
+      }
+      function check() {
+        try {
+          const voices = synth.getVoices();
+          if (voices && voices.length > 0) {
+            finalize(true);
+            return true;
+          }
+        } catch (error) {
+          console.warn('No se pudieron leer las voces', error);
+        }
+        return false;
+      }
+      function onVoicesChanged() {
+        check();
+      }
+      if (check()) {
+        return;
+      }
+      if (typeof synth.addEventListener === 'function') {
+        synth.addEventListener('voiceschanged', onVoicesChanged);
+      } else if ('onvoiceschanged' in synth) {
+        synth.onvoiceschanged = onVoicesChanged;
+      }
+      timeoutId = window.setTimeout(() => finalize(false), 1500);
+    });
+  }
+  return voicesReadyPromise;
+}
+
+function ensureSpeechReady() {
+  if (!('speechSynthesis' in window)) {
+    return Promise.resolve(false);
+  }
+  if (speechWarmupDone) {
+    return Promise.resolve(true);
+  }
+  if (speechWarmupPromise) {
+    return speechWarmupPromise;
+  }
+  const synth = window.speechSynthesis;
+  speechWarmupPromise = ensureVoicesReady().then(() => new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      speechWarmupDone = ok;
+      speechWarmupPromise = null;
+      resolve(ok);
+    };
+    try {
+      const utter = new SpeechSynthesisUtterance('...');
+      utter.lang = 'es-ES';
+      utter.volume = 0;
+      utter.rate = 1;
+      utter.pitch = 1;
+      const fallback = window.setTimeout(() => finish(true), 700);
+      utter.onend = () => {
+        window.clearTimeout(fallback);
+        finish(true);
+      };
+      utter.onerror = (event) => {
+        window.clearTimeout(fallback);
+        console.warn('Error durante la inicializacion de la voz', event.error || event);
+        finish(false);
+      };
+      synth.speak(utter);
+    } catch (error) {
+      console.warn('No se pudo inicializar la voz', error);
+      finish(false);
+    }
+  }));
+  return speechWarmupPromise;
+}
+
+function primeSpeechVoices() {
+  if (!('speechSynthesis' in window)) {
+    return;
+  }
+  ensureVoicesReady().catch((error) => {
+    console.warn('No se pudieron precargar las voces', error);
+  });
+}
 function setMicState(state) {
   if (!btnMic) {
     return;
@@ -250,11 +386,26 @@ function initSpeech() {
     setMicState('listening');
   });
   recognition.addEventListener('end', () => {
-    if (listening) {
-      recognition.start();
-    } else {
+    if (recognitionPauseResolver) {
+      const resolve = recognitionPauseResolver;
+      recognitionPauseResolver = null;
+      recognitionPausePromise = null;
+      resolve();
+    }
+    if (!listening) {
       setStatus('Microfono detenido.');
       setMicState('ready');
+      return;
+    }
+    if (recognitionRestartHold) {
+      recognitionShouldResume = true;
+      return;
+    }
+    try {
+      recognition.start();
+    } catch (error) {
+      console.warn('No se pudo reiniciar el microfono', error);
+      recognitionShouldResume = true;
     }
   });
   recognition.addEventListener('error', (event) => {
@@ -287,6 +438,13 @@ function stopListening() {
   if (!recognition) {
     return;
   }
+  recognitionRestartHold = false;
+  recognitionShouldResume = false;
+  if (recognitionPauseResolver) {
+    recognitionPauseResolver();
+    recognitionPauseResolver = null;
+  }
+  recognitionPausePromise = null;
   if (!listening) {
     playBeep(440, 0.12);
     setStatus('Microfono detenido.');
@@ -331,6 +489,50 @@ function onSpeechResult(event) {
   liveTextEl.textContent = cleanedFinal;
   checkForCallKeywords(cleanedFinal);
   processUtterance(cleanedFinal);
+}
+
+function pauseRecognitionForSpeech() {
+  if (!recognition || !listening) {
+    recognitionRestartHold = false;
+    recognitionShouldResume = false;
+    return Promise.resolve();
+  }
+  // Pause recognition while we speak; otherwise some browsers mute TTS instantly.
+  recognitionRestartHold = true;
+  recognitionShouldResume = false;
+  if (!recognitionPausePromise) {
+    recognitionPausePromise = new Promise((resolve) => {
+      recognitionPauseResolver = resolve;
+    });
+    try {
+      recognition.stop();
+    } catch (error) {
+      recognitionRestartHold = false;
+      if (recognitionPauseResolver) {
+        recognitionPauseResolver();
+        recognitionPauseResolver = null;
+      }
+      recognitionPausePromise = null;
+      console.warn('No se pudo pausar el microfono', error);
+    }
+  }
+  return recognitionPausePromise;
+}
+
+function handleSpeechFinished() {
+  activeUtterance = null;
+  const shouldRestart = recognitionShouldResume;
+  recognitionRestartHold = false;
+  recognitionShouldResume = false;
+  // Resume the mic only after we finish speaking so we do not transcribe ourselves.
+  if (!recognition || !listening || !shouldRestart) {
+    return;
+  }
+  try {
+    recognition.start();
+  } catch (error) {
+    console.warn('No se pudo reanudar el microfono', error);
+  }
 }
 
 async function processUtterance(text) {
@@ -383,8 +585,9 @@ async function processUtterance(text) {
     protocolTitle = nextStepData.title || protocolTitle;
 
     const stepText = nextStepData.step_text || 'No hay mas instrucciones disponibles.';
+    await pauseRecognitionForSpeech();
     renderStep(stepText, protocolTitle, nextStepData.context?.step_index ?? null, nextStepData.total_steps);
-    speak(stepText);
+    await speak(stepText);
 
     if (nextStepData.done) {
       setStatus('Protocolo completado. Espera ayuda profesional.');
@@ -433,16 +636,62 @@ function renderStep(text, title, stepIndex, totalSteps) {
   item.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
-function speak(text) {
+async function speak(text) {
   if (!('speechSynthesis' in window)) {
+    handleSpeechFinished();
     return;
   }
+  await ensureSpeechReady();
   stopSpeaking();
   activeUtterance = new SpeechSynthesisUtterance(text);
   activeUtterance.lang = 'es-ES';
   activeUtterance.pitch = 1;
   activeUtterance.rate = 1;
-  window.speechSynthesis.speak(activeUtterance);
+  activeUtterance.volume = 1;
+  const synth = window.speechSynthesis;
+  const voices = synth.getVoices();
+  if (voices && voices.length) {
+    const lowerLang = (value) => (value || '').toLowerCase();
+    const exact = voices.find((voice) => lowerLang(voice.lang) === 'es-es');
+    const locale = voices.find((voice) => lowerLang(voice.lang).startsWith('es'));
+    const contains = voices.find((voice) => lowerLang(voice.lang).includes('es'));
+    activeUtterance.voice = exact || locale || contains || voices[0];
+  }
+  return new Promise((resolve) => {
+    let resolved = false;
+    const settle = () => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      resolve();
+    };
+    activeUtterance.onstart = () => {
+      settle();
+    };
+    activeUtterance.onend = (event) => {
+      handleSpeechFinished();
+      settle();
+    };
+    activeUtterance.onerror = (event) => {
+      console.error('Error reproduciendo la instruccion', event.error || event);
+      setStatus('No se pudo reproducir la instruccion en voz alta.');
+      handleSpeechFinished();
+      settle();
+    };
+    try {
+      if (typeof synth.resume === 'function' && synth.paused) {
+        synth.resume();
+      }
+      synth.speak(activeUtterance);
+      window.setTimeout(() => settle(), 120);
+    } catch (error) {
+      console.error('No se pudo iniciar la reproduccion de la instruccion', error);
+      setStatus('No se pudo reproducir la instruccion en voz alta.');
+      handleSpeechFinished();
+      settle();
+    }
+  });
 }
 
 function stopSpeaking() {

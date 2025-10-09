@@ -8,3 +8,13 @@ ts_iso,event,session_id,user_text,intent,confidence,protocol_id,step_index,laten
 2025-09-16T08:40:06Z,next_step,5b56d58f-ecaa-4a0d-8d4c-a1f4877f6c0d,,,,pa_no_respira_v1,5,0
 2025-09-16T08:40:07Z,next_step,5b56d58f-ecaa-4a0d-8d4c-a1f4877f6c0d,,,,pa_no_respira_v1,6,0
 2025-09-16T08:40:08Z,next_step,5b56d58f-ecaa-4a0d-8d4c-a1f4877f6c0d,,,,pa_no_respira_v1,7,0
+2025-10-09T15:53:30Z,understand,sess-1760025178620-4ae4e46994d3a8,No respira,parada_respiratoria,0.95,,,24
+2025-10-09T15:53:31Z,next_step,sess-1760025178620-4ae4e46994d3a8,,,,pa_no_respira_v1,0,0
+2025-10-09T16:07:14Z,understand,sess-1760026018460-a5111ac38658f8,No respira,parada_respiratoria,0.95,,,0
+2025-10-09T16:07:14Z,next_step,sess-1760026018460-a5111ac38658f8,,,,pa_no_respira_v1,0,0
+2025-10-09T16:07:45Z,understand,sess-1760026018460-a5111ac38658f8,No respira,parada_respiratoria,0.95,,,0
+2025-10-09T16:07:45Z,next_step,sess-1760026018460-a5111ac38658f8,,,,pa_no_respira_v1,0,0
+2025-10-09T16:26:08Z,understand,sess-1760027153061-131e14d247976,No respira,parada_respiratoria,0.95,,,0
+2025-10-09T16:26:08Z,next_step,sess-1760027153061-131e14d247976,,,,pa_no_respira_v1,0,0
+2025-10-09T16:26:51Z,understand,sess-1760027153061-131e14d247976,Continúa,convulsiones,0.8526315789473684,,,0
+2025-10-09T16:26:51Z,next_step,sess-1760027153061-131e14d247976,,,,pa_convulsiones_v1,0,0
