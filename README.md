@@ -1,34 +1,38 @@
 # 🚑 ConRumbo – Asistente Inteligente de Primeros Auxilios
 
+![ConRumbo Preview](frontend/assets/MVP%20HTML%20Conrumbo.jpg)
+
 > “Mantén la calma. Te guiaré paso a paso.”
 
-**ConRumbo** es una aplicación educativa y de emergencia que combina **IA, reconocimiento visual** y **asistencia guiada** para ofrecer ayuda inmediata en situaciones críticas. Diseñada especialmente para **universitarios y jóvenes adultos**, su objetivo es enseñar y asistir en primeros auxilios de manera accesible, empática y tecnológica.
+**ConRumbo** es una aplicación educativa y de emergencia que combina **IA, reconocimiento visual** y **asistencia guiada por voz** para ofrecer ayuda inmediata en situaciones críticas.  
+Diseñada especialmente para **universitarios y jóvenes adultos**, busca enseñar y asistir en primeros auxilios de forma accesible, empática y tecnológica.
 
 ---
 
 ## 🧠 Objetivo del Proyecto
 
-El proyecto nace del Trabajo Fin de Máster en *Data Science & IA (Evolve Máster)*, con el propósito de desarrollar una **plataforma inteligente que reaccione ante emergencias cotidianas** mediante:
-- **Reconocimiento visual con la cámara**
-- **Análisis de signos vitales**
-- **Guía por voz paso a paso**
-- **Simulación de llamadas y protocolos automáticos**
+Este proyecto forma parte del **Trabajo Fin de Máster en Data Science & IA (Evolve Máster)**.  
+Su propósito es crear una **plataforma inteligente capaz de asistir y educar en emergencias cotidianas**, aplicando modelos de IA, análisis de datos y diseño emocionalmente inteligente.
 
-El enfoque combina **Data Science**, **IA aplicada al bienestar**, y un **diseño emocionalmente inteligente**.
+El sistema ofrece:
+- Reconocimiento visual con la cámara  
+- Análisis de signos vitales  
+- Guía por voz paso a paso  
+- Llamada directa al 112  
+- Registro de métricas de uso  
 
 ---
 
-## 🌐 Vista Principal
+## 🌐 Vista Principal de la App
 
-La interfaz principal refleja un entorno de calma y control:
-
-- **Mensaje central:** “Mantén la calma. Te guiaré paso a paso.”
-- **Botón de micrófono:** activa el asistente de voz (`ConRumbo Bot`)
-- **Panel de transcripción:** muestra la conversación en vivo
-- **Monitor vital:** frecuencia cardíaca (bpm) y respiratoria (rpm)
-- **Scanner 3D:** detección visual de heridas o anomalías
-- **Botón de emergencia:** llamada directa al **112**
-- **Historial de instrucciones recientes**
+La interfaz central muestra un entorno calmado y claro, con:
+- Mensaje principal: *“Mantén la calma. Te guiaré paso a paso.”*  
+- Botón de micrófono → activa el **ConRumbo Bot**  
+- Panel de transcripción en vivo  
+- Monitor de signos vitales (bpm y rpm)  
+- Indicador de estado del **scanner 3D**  
+- Botón rojo para **llamar al 112**  
+- Sección de **instrucciones recientes**
 
 ---
 
@@ -38,118 +42,117 @@ La interfaz principal refleja un entorno de calma y control:
 ConRumbo MVP/
 │
 ├── backend/
-│   ├── app.py                # Servidor Flask principal
-│   ├── routes/
-│   │   ├── voice.py          # Procesamiento del audio
-│   │   ├── scanner.py        # Lógica de reconocimiento visual
-│   │   └── instructions.py   # Generación de pasos de primeros auxilios
-│   ├── models/
-│   │   └── ai_model.py       # Modelo IA para reconocimiento de heridas
-│   └── static/
-│       └── data/             # Imágenes o datasets auxiliares
+│   ├── app.py                # Servidor Flask principal (API)
+│   ├── emergency_bot.py      # Lógica del asistente de voz y flujo de conversación
+│   ├── metrics.py            # Módulo de análisis de métricas (bpm, rpm)
+│   ├── metrics_log.csv       # Registro de métricas generadas por los usuarios
+│   ├── nlp_processor.py      # Procesamiento de lenguaje natural (instrucciones y respuestas)
+│   └── protocols.json        # Protocolos de primeros auxilios estructurados por tipo de emergencia
 │
 ├── frontend/
 │   ├── index.html            # Interfaz principal (UI)
-│   ├── style.css             # Estilos (colores, tipografía y estructura)
-│   ├── script.js             # Lógica del cliente (voz, cámara, eventos)
-│   └── assets/               # Iconos, imágenes y sonidos
+│   ├── style.css             # Estilos visuales (colores, estructura, tipografía)
+│   ├── script.js             # Lógica del cliente: micrófono, cámara, eventos
+│   ├── sw.js                 # Service Worker para funcionamiento offline (PWA)
+│   ├── manifest.webmanifest  # Configuración para instalación móvil (Progressive Web App)
+│   └── assets/
+│       ├── lens-photo.jpg                # Imagen decorativa / recurso visual
+│       └── MVP HTML Conrumbo.jpg         # Mockup visual del MVP
 │
-├── .env                      # Variables de entorno (tokens, API keys)
-├── requirements.txt           # Dependencias Python
-├── README.md                 # Documentación del proyecto
-└── LICENSE
+├── requirements.txt          # Dependencias de Python
+├── README_ConRumbo.md        # Documentación del proyecto
+└── .gitignore                # Archivos y carpetas ignoradas por Git
 ```
 
 ---
 
 ## ⚙️ Instalación y Ejecución
 
-### 🔸 1. Clonar el repositorio
+### 🔹 1. Clonar el repositorio
 ```bash
 git clone https://github.com/valentinabailoncano-code/ConRumbo.git
-cd ConRumbo\backend
+cd "ConRumbo MVP"
 ```
 
-### 🔸 2. Crear y activar entorno virtual
+### 🔹 2. Crear y activar entorno virtual
 ```bash
+cd backend
 python -m venv .venv
 .venv\Scripts\activate
 ```
 
-### 🔸 3. Instalar dependencias
+### 🔹 3. Instalar dependencias
 ```bash
 pip install -r requirements.txt
 ```
 
-### 🔸 4. Ejecutar el backend
+### 🔹 4. Ejecutar el servidor backend
 ```bash
 python app.py
 ```
-> El servidor se iniciará en `http://127.0.0.1:8000`
+> Servidor disponible en `http://127.0.0.1:8000`
 
-### 🔸 5. Levantar el frontend
+### 🔹 5. Iniciar el frontend
+En una nueva terminal:
 ```bash
 cd ../frontend
 python -m http.server 3000
 ```
-> Abre el navegador en `http://localhost:3000/index.html`
+> Accede desde el navegador a `http://localhost:3000/index.html`
+
+> 📱 Si quieres probarlo en el móvil:  
+> conecta ambos dispositivos a la misma red Wi-Fi y abre la IP local del ordenador (por ejemplo, `http://192.168.1.10:3000`).
 
 ---
 
-## 🤖 Principales Funcionalidades
+## 🤖 Funcionalidades Principales
 
 | Función | Descripción |
-|----------|--------------|
-| 🎙️ **Asistente de voz (ConRumbo Bot)** | Escucha al usuario y transcribe en tiempo real para ofrecer asistencia paso a paso. |
-| 🧠 **IA de Reconocimiento Visual** | Identifica heridas o riesgos mediante la cámara del dispositivo. |
-| 💓 **Monitoreo de signos vitales** | Muestra frecuencia cardíaca (bpm) y respiratoria (rpm). |
-| 📋 **Instrucciones guiadas** | Proporciona instrucciones breves y claras en pantalla. |
-| ☎️ **Botón de emergencia (112)** | Llama automáticamente a los servicios de emergencia. |
-| 🔁 **Historial de instrucciones** | Permite revisar las últimas recomendaciones del sistema. |
+|----------|-------------|
+| 🎙️ **ConRumbo Bot** | Asistente de voz con reconocimiento y transcripción en vivo. |
+| 🧠 **Procesamiento NLP** | Interpreta las respuestas del usuario y ofrece instrucciones guiadas. |
+| 💓 **Módulo de métricas** | Calcula bpm y rpm, guardando el registro en `metrics_log.csv`. |
+| 📋 **Protocolos JSON** | Contiene guías estructuradas de primeros auxilios según la emergencia. |
+| 🧍‍♀️ **Reconocimiento visual** | Permite escanear heridas o situaciones mediante cámara. |
+| ☎️ **Botón 112** | Llamada de emergencia simulada o real. |
+| 🌐 **PWA (Progressive Web App)** | Permite instalar la app en el móvil y usarla offline. |
 
 ---
 
-## 🧬 Componentes de IA y Data Science
+## 🧬 IA y Data Science
 
-- **Speech Recognition:** `speech_recognition`, `gTTS`
-- **Image Analysis:** `OpenCV`, `TensorFlow`, `MediaPipe`
-- **NLP & Decision Models:** `transformers`, `scikit-learn`
-- **Backend:** `Flask`, `Flask-CORS`
-- **Frontend:** `HTML`, `CSS`, `JavaScript`
+El backend integra componentes de IA y análisis de datos:
 
-El sistema integra modelos de IA para:
-- Clasificar el tipo de emergencia (herida, asfixia, desmayo, etc.)
-- Generar respuestas guiadas mediante NLP
-- Detectar visualmente lesiones con cámara activa
+- **Speech Recognition:** `speech_recognition`, `gTTS`  
+- **Procesamiento NLP:** `transformers`, `scikit-learn`  
+- **Análisis visual:** `OpenCV`, `MediaPipe`  
+- **Backend:** `Flask`, `Flask-CORS`  
+- **Frontend:** `HTML`, `CSS`, `JavaScript`  
 
----
-
-## 📊 Aplicación de Data Science e IA
-
-| Área | Aplicación |
-|------|-------------|
-| **Data Science** | Análisis de patrones de uso y respuesta del usuario. |
-| **IA Generativa** | Creación de instrucciones personalizadas según la situación. |
-| **Reconocimiento Visual** | Detección automática de heridas y activación de protocolo. |
-| **Procesamiento de Voz** | Conversación natural con el usuario para calmar y guiar. |
+Aplicaciones:
+- Detección del tipo de emergencia por voz.  
+- Generación automática de instrucciones adaptadas.  
+- Detección visual de heridas (scanner activo).  
+- Análisis de métricas para alertas automáticas.
 
 ---
 
 ## 📱 Público Objetivo
 
-- Estudiantes universitarios
-- Jóvenes adultos en situaciones de emergencia
-- Instituciones educativas y campus
-- Programas de formación en primeros auxilios
+- Estudiantes universitarios  
+- Jóvenes adultos  
+- Centros educativos o empresas con programas de formación  
+- Usuarios que buscan una guía simple y rápida ante emergencias  
 
 ---
 
 ## 💡 Futuras Mejoras
 
-- 🗺️ Geolocalización automática y envío de ubicación al 112  
-- 📦 Kits de primeros auxilios conectados a la app  
-- 🧩 Módulos educativos con gamificación  
-- 📈 Dashboard de análisis de emergencias por región  
+- 📍 Geolocalización y envío de coordenadas al 112  
+- 🧩 Personalización por nivel de experiencia  
+- 🗣️ Asistente empático con tono adaptativo  
+- 📦 ConRumbo Kits (integración con kits físicos de emergencia)  
+- 📊 Panel de estadísticas de emergencias en tiempo real  
 
 ---
 
@@ -158,7 +161,7 @@ El sistema integra modelos de IA para:
 **Valentina Bailon Cano**  
 📍 Universidad Pontificia Comillas – ICADE  
 🎓 Máster en Data Science & IA – Evolve Máster  
-🌐 [LinkedIn](https://www.linkedin.com/in/valentinabailoncano/)  
+🌐 [LinkedIn](https://www.linkedin.com/in/valentinabailoncano/)
 
 ---
 
@@ -170,3 +173,4 @@ Puedes usarlo, modificarlo y distribuirlo citando la fuente.
 ---
 
 ### 🩹 ConRumbo — La calma es el primer paso para salvar una vida.
+.
