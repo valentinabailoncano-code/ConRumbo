@@ -30,10 +30,10 @@ const EMERGENCY_NUMBER = '112';
 const TEST_NUMBER = '689876686';
 const CALL_KEYWORDS = ['llamar', 'emergencia', '112', 'ambulancia', 'ayuda', 'socorro'];
 
-const btnMic = document.getElementById('btnMic');
+const btnMic = document.getElementById('btnMic') || document.getElementById('btnIniciar');
 const statusEl = document.getElementById('status');
-const liveTextEl = document.getElementById('liveText');
-const stepsListEl = document.getElementById('stepsList');
+const liveTextEl = document.getElementById('liveText') || document.getElementById('transcripcion');
+const stepsListEl = document.getElementById('stepsList') || document.getElementById('instrucciones');
 const call112Btn = document.getElementById('btnCall112');
 const callTestBtn = document.getElementById('btnCallTest');
 const callButtons = [call112Btn, callTestBtn].filter(Boolean);
@@ -52,15 +52,22 @@ const sessionId = (crypto && typeof crypto.randomUUID === 'function')
   : `sess-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const supportsAbortController = typeof AbortController !== 'undefined';
 
+const RawSpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const IS_IOS_DEVICE = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_CHROME_FAMILY = /Chrome|Edg|CriOS/i.test(navigator.userAgent);
+const USE_BROWSER_SR = Boolean(RawSpeechRecognition) && IS_CHROME_FAMILY && !IS_IOS_DEVICE;
+const USE_SERVER_SR = !USE_BROWSER_SR;
+const GUIDE_URL = `${API_BASE}/guide`;
+const STT_URL = `${API_BASE}/stt`;
+const SERVER_STT_DURATION_MS = 5000;
+
 let recognition;
 let listening = false;
 let audioCtx;
 let highlightTimer = null;
 let lastFinalTranscript = '';
 let activeUtterance = null;
-let currentIntent = null;
-let currentContext = null;
-let protocolTitle = '';
 let pendingController = null;
 let recognitionRestartHold = false;
 let recognitionShouldResume = false;
@@ -70,6 +77,14 @@ let voicesReady = false;
 let voicesReadyPromise = null;
 let speechWarmupDone = false;
 let speechWarmupPromise = null;
+let micPermissionGranted = false;
+let serverRecorder = null;
+let serverStream = null;
+let serverChunks = [];
+let serverStopTimer = null;
+let serverAutoLoop = false;
+let serverTranscribing = false;
+let serverCancelled = false;
 
 initSpeech();
 checkHealth();
@@ -85,22 +100,31 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-btnMic.addEventListener('click', async () => {
-  if (!recognition) {
-    setStatus('Reconocimiento de voz no disponible en este navegador.');
-    return;
-  }
-  if (listening) {
-    stopListening();
-  } else {
-    try {
-      await ensureSpeechReady();
-    } catch (error) {
-      console.warn('No se pudo preparar la voz', error);
+if (btnMic) {
+  btnMic.addEventListener('click', async () => {
+    if (listening || serverTranscribing) {
+      stopListening();
+      return;
     }
+
+    try {
+      await initAudioGesture();
+      await ensureMicPermission();
+    } catch (error) {
+      console.error('No se pudo inicializar el audio/microfono', error);
+      setStatus('Necesito acceso al audio para ayudarte.');
+      return;
+    }
+
+    try {
+      await speak('Estoy escuchando. ¿Cuál es la situación?');
+    } catch (error) {
+      console.warn('No se pudo reproducir el mensaje inicial', error);
+    }
+
     startListening();
-  }
-});
+  });
+}
 
 if (callTestBtn) {
   callTestBtn.addEventListener('click', () => handleCallClick(TEST_NUMBER));
@@ -368,8 +392,16 @@ function generateQr(data) {
 }
 
 function initSpeech() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!USE_BROWSER_SR) {
+    recognition = null;
+    setStatus('Pulsa "Iniciar" para grabar tu voz y obtener ayuda.');
+    setMicState('ready');
+    return;
+  }
+
+  const SpeechRecognition = RawSpeechRecognition;
   if (!SpeechRecognition) {
+    recognition = null;
     setStatus('El reconocimiento de voz no es compatible con este dispositivo.');
     setMicState('unavailable');
     return;
@@ -378,7 +410,7 @@ function initSpeech() {
   recognition = new SpeechRecognition();
   recognition.lang = 'es-ES';
   recognition.continuous = true;
-  recognition.interimResults = true;
+  recognition.interimResults = false;
 
   recognition.addEventListener('result', onSpeechResult);
   recognition.addEventListener('start', () => {
@@ -417,7 +449,18 @@ function initSpeech() {
 }
 
 function startListening() {
+  if (USE_SERVER_SR) {
+    startServerStt().catch((error) => {
+      console.error('No se pudo iniciar la grabacion para STT', error);
+      setStatus('No se pudo iniciar la grabacion. Intentalo de nuevo.');
+      setMicState('ready');
+    });
+    return;
+  }
   if (!recognition || listening) {
+    if (!recognition) {
+      setStatus('Reconocimiento de voz no disponible.');
+    }
     return;
   }
   listening = true;
@@ -435,6 +478,10 @@ function startListening() {
 }
 
 function stopListening() {
+  if (USE_SERVER_SR) {
+    stopServerStt();
+    return;
+  }
   if (!recognition) {
     return;
   }
@@ -462,6 +509,223 @@ function stopListening() {
   setMicState('ready');
 }
 
+async function startServerStt() {
+  if (serverTranscribing || listening) {
+    return;
+  }
+  serverCancelled = false;
+  serverChunks = [];
+  setMicState('listening');
+  setStatus('Preparando microfono...');
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    serverStream = stream;
+    serverRecorder = createMediaRecorder(stream);
+  } catch (error) {
+    listening = false;
+    serverTranscribing = false;
+    setMicState('ready');
+    throw error;
+  }
+
+  if (!serverRecorder) {
+    listening = false;
+    serverTranscribing = false;
+    setMicState('ready');
+    throw new Error('MediaRecorder no disponible para este navegador.');
+  }
+
+  listening = true;
+  serverTranscribing = true;
+  playBeep(880, 0.12);
+  setStatus('Grabando... habla ahora.');
+
+  serverRecorder.addEventListener('dataavailable', (event) => {
+    if (event.data && event.data.size > 0) {
+      serverChunks.push(event.data);
+    }
+  });
+  serverRecorder.addEventListener('stop', () => {
+    window.clearTimeout(serverStopTimer);
+    serverStopTimer = null;
+    const recorderMime = serverRecorder && serverRecorder.mimeType ? serverRecorder.mimeType : '';
+    const chunks = serverChunks.slice();
+    cleanupServerStream();
+    listening = false;
+
+    if (serverCancelled) {
+      serverChunks = [];
+      serverTranscribing = false;
+      setStatus('Microfono detenido.');
+      setMicState('ready');
+      return;
+    }
+
+    if (!chunks.length) {
+      serverChunks = [];
+      serverTranscribing = false;
+      setStatus('No se capturo audio. Intentalo de nuevo.');
+      setMicState('ready');
+      return;
+    }
+
+    handleServerRecordingComplete(chunks, recorderMime).catch((error) => {
+      console.error('No se pudo procesar el audio grabado', error);
+      setStatus('No se pudo transcribir el audio.');
+    });
+  });
+
+  try {
+    serverRecorder.start();
+  } catch (error) {
+    cleanupServerStream();
+    listening = false;
+    serverTranscribing = false;
+    setMicState('ready');
+    throw error;
+  }
+
+  serverStopTimer = window.setTimeout(() => {
+    if (serverRecorder && serverRecorder.state === 'recording') {
+      try {
+        serverRecorder.stop();
+      } catch (error) {
+        console.warn('No se pudo detener la grabacion automaticamente', error);
+      }
+    }
+  }, SERVER_STT_DURATION_MS);
+}
+
+function stopServerStt() {
+  if (!serverRecorder && !serverStream) {
+    listening = false;
+    serverTranscribing = false;
+    setMicState('ready');
+    return;
+  }
+  serverAutoLoop = false;
+  serverCancelled = true;
+  window.clearTimeout(serverStopTimer);
+  serverStopTimer = null;
+  if (serverRecorder && serverRecorder.state === 'recording') {
+    try {
+      serverRecorder.stop();
+    } catch (error) {
+      console.warn('No se pudo detener la grabacion', error);
+    }
+  } else {
+    cleanupServerStream();
+    serverChunks = [];
+    listening = false;
+    serverTranscribing = false;
+    setMicState('ready');
+    setStatus('Microfono detenido.');
+  }
+}
+
+function cleanupServerStream() {
+  if (serverStream) {
+    serverStream.getTracks().forEach((track) => {
+      try {
+        track.stop();
+      } catch (error) {
+        // Ignorar
+      }
+    });
+  }
+  serverStream = null;
+  serverRecorder = null;
+}
+
+function createMediaRecorder(stream) {
+  if (typeof MediaRecorder === 'undefined') {
+    return null;
+  }
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    ''
+  ];
+  for (let i = 0; i < candidates.length; i += 1) {
+    const type = candidates[i];
+    if (type && typeof MediaRecorder.isTypeSupported === 'function' && !MediaRecorder.isTypeSupported(type)) {
+      continue;
+    }
+    try {
+      return type ? new MediaRecorder(stream, { mimeType: type }) : new MediaRecorder(stream);
+    } catch (error) {
+      // probar siguiente opcion
+    }
+  }
+  return null;
+}
+
+async function handleServerRecordingComplete(chunks, mimeType) {
+  let shouldRestart = false;
+  const chunkType = chunks[0]?.type || '';
+  const blobType = mimeType || chunkType || 'audio/webm';
+  const audioBlob = new Blob(chunks, { type: blobType });
+  const formData = new FormData();
+  formData.append('audio', audioBlob, 'input.webm');
+
+  try {
+    setStatus('Transcribiendo...');
+    const response = await fetch(STT_URL, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) {
+      throw new Error(`stt-${response.status}`);
+    }
+    const payload = await response.json();
+    const transcript = (payload.text || '').trim();
+
+    liveTextEl.textContent = transcript || '—';
+    if (!transcript) {
+      serverAutoLoop = false;
+      await speak('No he entendido. ¿Puedes repetir?');
+      setStatus('No he entendido. Pulsa iniciar para intentarlo de nuevo.');
+      return;
+    }
+
+    checkForCallKeywords(transcript);
+    await processUtterance(transcript);
+    shouldRestart = serverAutoLoop;
+  } finally {
+    serverChunks = [];
+    serverTranscribing = false;
+    if (shouldRestart) {
+      startListening();
+    } else {
+      setMicState('ready');
+    }
+  }
+}
+
+async function ensureMicPermission() {
+  if (micPermissionGranted) {
+    return;
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  micPermissionGranted = true;
+  stream.getTracks().forEach((track) => {
+    try {
+      track.stop();
+    } catch (error) {
+      // Ignorar
+    }
+  });
+}
+
+async function initAudioGesture() {
+  const ctx = ensureAudioContext();
+  if (ctx && ctx.state === 'suspended') {
+    await ctx.resume();
+  }
+  return ctx;
+}
 function onSpeechResult(event) {
   let interimTranscript = '';
   let finalTranscript = '';
@@ -545,94 +809,92 @@ async function processUtterance(text) {
   setStatus('Procesando instruccion...');
 
   try {
-    const understandResponse = await fetch(`${API_BASE}/understand`, {
+    const guideResponse = await fetch(GUIDE_URL, {
       method: 'POST',
       signal: pendingController?.signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        text,
-        session_id: sessionId,
-        context: currentContext
-      })
-    });
-
-    if (!understandResponse.ok) {
-      throw new Error('No se pudo interpretar la frase.');
-    }
-
-    const understandData = await understandResponse.json();
-    currentIntent = understandData.intent || null;
-    currentContext = understandData.context || null;
-
-    const nextStepResponse = await fetch(`${API_BASE}/next_step`, {
-      method: 'POST',
-      signal: pendingController?.signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        intent: currentIntent,
-        context: currentContext,
+        query: text,
+        lang: 'es-ES',
         session_id: sessionId
       })
     });
 
-    if (!nextStepResponse.ok) {
-      const payload = await nextStepResponse.json().catch(() => ({}));
-      throw new Error(payload.error || 'No se pudo obtener el siguiente paso.');
+    if (!guideResponse.ok) {
+      const payload = await guideResponse.json().catch(() => ({}));
+      throw new Error(payload.error || 'No se pudo obtener la siguiente instruccion.');
     }
 
-    const nextStepData = await nextStepResponse.json();
-    currentContext = nextStepData.context || currentContext;
-    protocolTitle = nextStepData.title || protocolTitle;
+    const guideData = await guideResponse.json();
+    const stepIndex = typeof guideData.step === 'number' ? guideData.step - 1 : null;
+    const stepText = guideData.text || guideData.say || 'No hay mas instrucciones.';
+    const speechText = guideData.say || guideData.text || stepText;
+    const shouldContinue = Boolean(guideData.next);
+    serverAutoLoop = shouldContinue;
 
-    const stepText = nextStepData.step_text || 'No hay mas instrucciones disponibles.';
     await pauseRecognitionForSpeech();
-    renderStep(stepText, protocolTitle, nextStepData.context?.step_index ?? null, nextStepData.total_steps);
-    await speak(stepText);
+    renderGuideStep({
+      step: typeof stepIndex === 'number' ? stepIndex + 1 : null,
+      text: stepText,
+      title: guideData.title,
+      totalSteps: guideData.total_steps || guideData.totalSteps
+    });
 
-    if (nextStepData.done) {
-      setStatus('Protocolo completado. Espera ayuda profesional.');
+    if (USE_BROWSER_SR && !shouldContinue) {
+      recognitionShouldResume = false;
+    }
+
+    if (speechText) {
+      await speak(speechText);
+    }
+
+    if (USE_BROWSER_SR && !shouldContinue) {
+      listening = false;
+      setMicState('ready');
+    }
+
+    if (shouldContinue) {
+      setStatus('Instruccion lista. Te escucho de nuevo.');
     } else {
-      setStatus('Instruccion lista. Puedes continuar hablando.');
+      setStatus('Protocolo completado. Permanece atento a la ayuda profesional.');
     }
   } catch (error) {
     if (error.name === 'AbortError') {
       return;
     }
+    serverAutoLoop = false;
     setStatus(`Error: ${error.message}`);
   } finally {
     pendingController = null;
   }
 }
 
-function renderStep(text, title, stepIndex, totalSteps) {
-  if (!text) {
+function renderGuideStep(data) {
+  if (!stepsListEl || !data) {
+    return;
+  }
+  const stepNumber = typeof data.step === 'number' && data.step > 0 ? data.step : null;
+  const displayText = (data.text || '').trim();
+  if (!displayText) {
     return;
   }
   const item = document.createElement('li');
-  const heading = document.createElement('strong');
-  const meta = document.createElement('span');
+  const title = stepNumber ? `Paso ${stepNumber}` : (data.title || 'Instruccion');
+  const description = document.createElement('p');
+  const heading = document.createElement('span');
+  heading.className = 'guide-step__title';
+  heading.textContent = title;
+  description.className = 'guide-step__text';
+  description.textContent = displayText;
 
-  heading.textContent = title || 'Instruccion';
-  meta.className = 'step-meta';
-
-  if (typeof stepIndex === 'number' && typeof totalSteps === 'number' && totalSteps > 0 && stepIndex >= 0) {
-    meta.textContent = `Paso ${Math.min(stepIndex + 1, totalSteps)} de ${totalSteps}`;
-  }
-
-  const paragraph = document.createElement('p');
-  paragraph.textContent = text;
-
+  item.className = 'guide-step';
   item.appendChild(heading);
-  if (meta.textContent) {
-    item.appendChild(meta);
-  }
-  item.appendChild(paragraph);
+  item.appendChild(description);
 
   stepsListEl.appendChild(item);
   while (stepsListEl.children.length > 8) {
     stepsListEl.removeChild(stepsListEl.firstElementChild);
   }
-
   item.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
@@ -765,7 +1027,7 @@ async function checkHealth() {
     if (!response.ok) {
       throw new Error();
     }
-    setStatus('Sistema listo. Pulsa el microfono para comenzar.');
+    setStatus('Sistema listo. Pulsa "Iniciar" para comenzar.');
     configureApiBtn?.classList.remove('footer-link--alert');
   } catch (error) {
     console.error('No se pudo verificar la API', error);
