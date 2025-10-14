@@ -99,7 +99,7 @@ python -m http.server 3000
 > Accede desde el navegador a `http://localhost:3000/index.html`
 
 > 📱 Si quieres probarlo en el móvil:  
-> conecta ambos dispositivos a la misma red Wi-Fi y abre la IP local del ordenador (por ejemplo, `http://192.168.1.10:3000`).
+> conecta ambos dispositivos a la misma red Wi-Fi y abre la IP local del ordenador (por ejemplo, `http://192.168.1.41:3000`).
 
 ---
 
