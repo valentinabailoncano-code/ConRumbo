@@ -1,11 +1,13 @@
 'use strict';
 
+const API_STORAGE_KEY = 'conrumbo.apiBase';
+
 // Resolve API base dynamically so mobile devices reach the backend.
 const API_BASE = (() => {
   const override = (typeof window !== 'undefined' && (
     window.CONRUMBO_API_BASE ||
     new URLSearchParams(window.location.search).get('api_base') ||
-    window.localStorage?.getItem('conrumbo.apiBase')
+    window.localStorage?.getItem(API_STORAGE_KEY)
   )) || null;
 
   if (override) {
@@ -28,7 +30,10 @@ const API_BASE = (() => {
 })();
 const EMERGENCY_NUMBER = '112';
 const TEST_NUMBER = '689876686';
-const CALL_KEYWORDS = ['llamar', 'emergencia', '112', 'ambulancia', 'ayuda', 'socorro'];
+const CALL_KEYWORDS = {
+  es: ['llamar', 'emergencia', '112', 'ambulancia', 'ayuda', 'socorro'],
+  en: ['call', 'emergency', '112', 'help', 'ambulance', '911']
+};
 
 const btnMic = document.getElementById('btnMic') || document.getElementById('btnIniciar');
 const statusEl = document.getElementById('status');
@@ -46,6 +51,19 @@ const modalNumber = document.getElementById('modalNumber');
 const modalTelLink = document.getElementById('modalTelLink');
 const copyNumberBtn = document.getElementById('copyNumber');
 const qrCanvas = document.getElementById('qrCanvas');
+const manualModal = document.getElementById('manualModal');
+const manualModalClose = document.getElementById('manualModalClose');
+const manualListEl = document.getElementById('manualList');
+const manualDetailTitle = document.getElementById('manualLessonTitle');
+const manualDetailSummary = document.getElementById('manualLessonSummary');
+const manualStepsEl = document.getElementById('manualSteps');
+const manualLessonExtra = document.getElementById('manualLessonExtra');
+const btnManual = document.getElementById('btnManual');
+const btnSettings = document.getElementById('btnSettings');
+const settingsModal = document.getElementById('settingsModal');
+const settingsModalClose = document.getElementById('settingsModalClose');
+const settingThemeSelect = document.getElementById('settingTheme');
+const settingLanguageSelect = document.getElementById('settingLanguage');
 
 const sessionId = (crypto && typeof crypto.randomUUID === 'function')
   ? crypto.randomUUID()
@@ -61,6 +79,631 @@ const USE_SERVER_SR = !USE_BROWSER_SR;
 const GUIDE_URL = `${API_BASE}/guide`;
 const STT_URL = `${API_BASE}/stt`;
 const SERVER_STT_DURATION_MS = 5000;
+
+const STORAGE_KEYS = {
+  apiBase: API_STORAGE_KEY,
+  language: 'conrumbo.language',
+  theme: 'conrumbo.theme'
+};
+
+const SUPPORTED_LANGUAGES = ['es', 'en'];
+const LANGUAGE_FALLBACK = 'es';
+
+const LANGUAGE_METADATA = {
+  es: { locale: 'es-ES' },
+  en: { locale: 'en-US' }
+};
+
+const TRANSLATIONS = {
+  "es": {
+    "app.documentTitle": "ConRumbo \u2014 Asistente de Emergencias (MVP)",
+    "top.brand": "ConRumbo",
+    "top.manual": "Manual",
+    "top.settings": "Ajustes",
+    "intro.heading": "Mant\u00e9n la calma.<br>Te guiar\u00e9 paso a paso.",
+    "intro.status": "Inicializando...",
+    "mic.buttonText": "Iniciar",
+    "mic.stateStart": "Iniciar",
+    "mic.stateStop": "Detener",
+    "mic.stateUnavailable": "No disponible",
+    "mic.subtitle": "Estoy aqu\u00ed para ayudarte. \u00bfCu\u00e1l es la situaci\u00f3n?",
+    "mic.role": "ConRumbo Bot",
+    "mic.transcriptionTitle": "Transcripci\u00f3n en vivo",
+    "vitals.alert": "Herida detectada",
+    "vitals.neutral": "Scanner 3D activo",
+    "steps.header": "Instrucciones recientes",
+    "steps.testCall": "Llamar TEST ({number})",
+    "footer.call112": "Llamar al 112",
+    "footer.disclaimer": "Este MVP no sustituye asistencia m\u00e9dica profesional. Llama al 112 ante cualquier duda.",
+    "footer.configureServer": "Configurar servidor",
+    "callModal.title": "Llamada de emergencia",
+    "callModal.copy": "Copiar n\u00famero",
+    "callModal.copied": "Copiado",
+    "callModal.openDialer": "Abrir marcador",
+    "callModal.openDialerWithNumber": "Abrir marcador ({number})",
+    "callModal.hint": "Escanea el c\u00f3digo QR con tu m\u00f3vil para llamar r\u00e1pidamente.",
+    "modal.closeLabel": "Cerrar",
+    "manual.title": "Manual de maniobras",
+    "manual.subtitle": "Selecciona una maniobra para ver los pasos.",
+    "manual.emptyTitle": "Selecciona una lecci\u00f3n",
+    "manual.emptyDescription": "Elige una maniobra del listado para ver el detalle.",
+    "manual.tipsTitle": "Recomendaciones",
+    "manual.stepPrefix": "Paso {number}",
+    "manual.genericStep": "Instrucci\u00f3n",
+    "settings.title": "Ajustes",
+    "settings.appearance": "Apariencia",
+    "settings.theme": "Modo de pantalla",
+    "settings.themeOptionLight": "Modo d\u00eda",
+    "settings.themeOptionDark": "Modo noche",
+    "settings.themeOptionAuto": "Autom\u00e1tico",
+    "settings.language": "Idioma",
+    "settings.languageLabel": "Selecciona un idioma",
+    "settings.languageOptionEs": "Espa\u00f1ol",
+    "settings.languageOptionEn": "Ingl\u00e9s",
+    "settings.languageInfo": "Los cambios se aplican de inmediato.",
+    "status.audioPermission": "Necesito acceso al audio para ayudarte.",
+    "status.pressStart": "Pulsa \"Iniciar\" para grabar tu voz y obtener ayuda.",
+    "status.srUnsupported": "El reconocimiento de voz no es compatible con este dispositivo.",
+    "status.listening": "Escuchando...",
+    "status.micStopped": "Micr\u00f3fono detenido.",
+    "status.micError": "Error del micr\u00f3fono: {error}",
+    "status.cannotStartRecording": "No se pudo iniciar la grabaci\u00f3n. Int\u00e9ntalo de nuevo.",
+    "status.srUnavailable": "Reconocimiento de voz no disponible.",
+    "status.activatingMic": "Activando micr\u00f3fono...",
+    "status.micInitError": "No se pudo iniciar el micr\u00f3fono: {error}",
+    "status.preparingMic": "Preparando micr\u00f3fono...",
+    "status.recording": "Grabando... habla ahora.",
+    "status.noAudio": "No se captur\u00f3 audio. Int\u00e9ntalo de nuevo.",
+    "status.transcriptionFailed": "No se pudo transcribir el audio.",
+    "status.transcribing": "Transcribiendo...",
+    "status.noUnderstanding": "No he entendido. Pulsa iniciar para intentarlo de nuevo.",
+    "status.processingInstruction": "Procesando instrucci\u00f3n...",
+    "status.instructionReady": "Instrucci\u00f3n lista. Te escucho de nuevo.",
+    "status.protocolCompleted": "Protocolo completado. Permanece atento a la ayuda profesional.",
+    "status.speechFailed": "No se pudo reproducir la instrucci\u00f3n en voz alta.",
+    "status.noMoreInstructions": "No hay m\u00e1s instrucciones.",
+    "status.serverReset": "Servidor predeterminado restablecido.",
+    "status.serverUpdated": "Servidor actualizado. Recargando...",
+    "status.systemReady": "Sistema listo. Pulsa \"Iniciar\" para comenzar.",
+    "status.apiUnavailable": "No se pudo conectar con la API. Pulsa \"Configurar servidor\" e introduce la direcci\u00f3n correcta.",
+    "status.copyFailed": "No se pudo copiar el n\u00famero.",
+    "status.errorWithMessage": "Error: {message}",
+    "error.nextInstruction": "No se pudo obtener la siguiente instrucci\u00f3n.",
+    "voice.initialPrompt": "Estoy escuchando. \u00bfCu\u00e1l es la situaci\u00f3n?",
+    "voice.repeatPrompt": "No he entendido. \u00bfPuedes repetir?",
+    "prompt.backendUrl": "Introduce la URL base del backend (por ejemplo http://192.168.1.50:8000)",
+    "config.currentServer": "Servidor actual: {url}"
+  },
+  "en": {
+    "app.documentTitle": "ConRumbo \u2014 Emergency Assistant (MVP)",
+    "top.brand": "ConRumbo",
+    "top.manual": "Playbook",
+    "top.settings": "Settings",
+    "intro.heading": "Stay calm.<br>I will guide you step by step.",
+    "intro.status": "Initializing...",
+    "mic.buttonText": "Start",
+    "mic.stateStart": "Start",
+    "mic.stateStop": "Stop",
+    "mic.stateUnavailable": "Unavailable",
+    "mic.subtitle": "I am here to help. What is the situation?",
+    "mic.role": "ConRumbo Bot",
+    "mic.transcriptionTitle": "Live transcription",
+    "vitals.alert": "Detected injury",
+    "vitals.neutral": "3D scanner active",
+    "steps.header": "Latest instructions",
+    "steps.testCall": "Call TEST ({number})",
+    "footer.call112": "Call 112",
+    "footer.disclaimer": "This MVP does not replace professional medical assistance. Call 112 if you are unsure.",
+    "footer.configureServer": "Configure server",
+    "callModal.title": "Emergency call",
+    "callModal.copy": "Copy number",
+    "callModal.copied": "Copied",
+    "callModal.openDialer": "Open dialer",
+    "callModal.openDialerWithNumber": "Open dialer ({number})",
+    "callModal.hint": "Scan the QR code with your phone to dial quickly.",
+    "modal.closeLabel": "Close",
+    "manual.title": "Playbook",
+    "manual.subtitle": "Pick a maneuver to review the steps.",
+    "manual.emptyTitle": "Choose a lesson",
+    "manual.emptyDescription": "Select a maneuver from the list to see the details.",
+    "manual.tipsTitle": "Tips",
+    "manual.stepPrefix": "Step {number}",
+    "manual.genericStep": "Instruction",
+    "settings.title": "Settings",
+    "settings.appearance": "Appearance",
+    "settings.theme": "Display mode",
+    "settings.themeOptionLight": "Day mode",
+    "settings.themeOptionDark": "Night mode",
+    "settings.themeOptionAuto": "Automatic",
+    "settings.language": "Language",
+    "settings.languageLabel": "Choose a language",
+    "settings.languageOptionEs": "Spanish",
+    "settings.languageOptionEn": "English",
+    "settings.languageInfo": "Changes are applied instantly.",
+    "status.audioPermission": "I need access to audio to assist you.",
+    "status.pressStart": "Press \"Start\" to record your voice and get help.",
+    "status.srUnsupported": "Speech recognition is not supported on this device.",
+    "status.listening": "Listening...",
+    "status.micStopped": "Microphone stopped.",
+    "status.micError": "Microphone error: {error}",
+    "status.cannotStartRecording": "Could not start recording. Please try again.",
+    "status.srUnavailable": "Speech recognition is unavailable.",
+    "status.activatingMic": "Activating microphone...",
+    "status.micInitError": "Microphone could not start: {error}",
+    "status.preparingMic": "Preparing microphone...",
+    "status.recording": "Recording... speak now.",
+    "status.noAudio": "No audio captured. Please try again.",
+    "status.transcriptionFailed": "We could not transcribe the audio.",
+    "status.transcribing": "Transcribing...",
+    "status.noUnderstanding": "I did not understand. Press start to try again.",
+    "status.processingInstruction": "Processing instruction...",
+    "status.instructionReady": "Instruction ready. I am listening again.",
+    "status.protocolCompleted": "Protocol completed. Stay alert for professional help.",
+    "status.speechFailed": "Could not read the instruction aloud.",
+    "status.noMoreInstructions": "No more instructions available.",
+    "status.serverReset": "Default server restored.",
+    "status.serverUpdated": "Server updated. Reloading...",
+    "status.systemReady": "System ready. Press \"Start\" to begin.",
+    "status.apiUnavailable": "Unable to reach the API. Press \"Configure server\" and enter the correct address.",
+    "status.copyFailed": "Could not copy the number.",
+    "status.errorWithMessage": "Error: {message}",
+    "error.nextInstruction": "Could not get the next instruction.",
+    "voice.initialPrompt": "I am listening. What is happening?",
+    "voice.repeatPrompt": "I did not understand. Can you repeat?",
+    "prompt.backendUrl": "Enter the backend base URL (for example http://192.168.1.50:8000)",
+    "config.currentServer": "Current server: {url}"
+  }
+};
+
+
+
+const PLAYBOOK = [
+  {
+    "id": "adult-cpr",
+    "translations": {
+      "es": {
+        "title": "RCP para adultos",
+        "summary": "Reanima a una persona inconsciente sin respiraci\u00f3n eficaz.",
+        "steps": [
+          "Comprueba el entorno y confirma que es seguro para ti y la v\u00edctima.",
+          "Revisa si responde y respira. Si no lo hace, llama al 112 o pide a alguien que lo haga.",
+          "Coloca las manos en el centro del pecho y realiza 30 compresiones firmes a un ritmo de 100-120 por minuto.",
+          "Inclina la cabeza hacia atr\u00e1s, levanta el ment\u00f3n y administra 2 ventilaciones de rescate observando la elevaci\u00f3n del pecho.",
+          "Contin\u00faa con ciclos de 30 compresiones y 2 ventilaciones hasta que llegue ayuda o la persona recupere signos vitales."
+        ],
+        "tips": [
+          "Utiliza un DEA en cuanto est\u00e9 disponible y sigue sus instrucciones.",
+          "Si no te sientes seguro con las ventilaciones, mant\u00e9n compresiones continuas."
+        ]
+      },
+      "en": {
+        "title": "Adult CPR",
+        "summary": "Resuscitate an unresponsive person who is not breathing normally.",
+        "steps": [
+          "Check that the area is safe for you and the victim.",
+          "Look for responsiveness and breathing. If absent, call 112 or ask someone nearby to call.",
+          "Place your hands on the center of the chest and deliver 30 firm compressions at 100-120 per minute.",
+          "Tilt the head back, lift the chin, and give 2 rescue breaths while watching the chest rise.",
+          "Continue 30 compressions and 2 breaths until help arrives or the person regains vital signs."
+        ],
+        "tips": [
+          "Use an AED as soon as it is available and follow its prompts.",
+          "If you are not confident giving breaths, continue hands-only compressions."
+        ]
+      }
+    }
+  },
+  {
+    "id": "choking-heimlich",
+    "translations": {
+      "es": {
+        "title": "Atragantamiento (maniobra de Heimlich)",
+        "summary": "Desobstruye la v\u00eda a\u00e9rea en una persona consciente que no puede respirar ni hablar.",
+        "steps": [
+          "Pregunta si se est\u00e1 atragantando y pide permiso para ayudar.",
+          "Col\u00f3cate detr\u00e1s de la persona, rodea su cintura con los brazos y cierra un pu\u00f1o justo encima del ombligo.",
+          "Sujeta el pu\u00f1o con la otra mano y realiza compresiones r\u00e1pidas hacia adentro y arriba.",
+          "Repite las compresiones hasta que el objeto salga o la persona pueda respirar con normalidad.",
+          "Si deja de responder, avisa al 112 y comienza RCP."
+        ],
+        "tips": [
+          "Si la persona est\u00e1 embarazada o es obesa, realiza compresiones en el estern\u00f3n en lugar del abdomen.",
+          "Para lactantes, alterna 5 palmadas en la espalda con 5 compresiones tor\u00e1cicas suaves."
+        ]
+      },
+      "en": {
+        "title": "Choking (Heimlich maneuver)",
+        "summary": "Clear the airway of a conscious person who cannot breathe or speak.",
+        "steps": [
+          "Ask if they are choking and get permission to help.",
+          "Stand behind the person, wrap your arms around their waist, and make a fist just above the navel.",
+          "Grasp the fist with your other hand and pull sharply inward and upward.",
+          "Repeat the thrusts until the object is expelled or the person breathes normally.",
+          "If they stop responding, call 112 and begin CPR."
+        ],
+        "tips": [
+          "If the person is pregnant or obese, perform chest thrusts on the sternum instead of abdominal thrusts.",
+          "For infants, alternate 5 back slaps with 5 gentle chest compressions."
+        ]
+      }
+    }
+  },
+  {
+    "id": "recovery-position",
+    "translations": {
+      "es": {
+        "title": "Posici\u00f3n lateral de seguridad",
+        "summary": "Mant\u00e9n la v\u00eda a\u00e9rea abierta en una persona inconsciente que respira.",
+        "steps": [
+          "Arrod\u00edllate junto a la persona y estira el brazo m\u00e1s cercano en \u00e1ngulo recto con el cuerpo.",
+          "Coloca el brazo m\u00e1s alejado cruzado sobre el pecho y dobla la rodilla m\u00e1s alejada.",
+          "Sujeta la rodilla doblada y el hombro cercano, gira a la persona hacia ti hasta apoyarla de lado.",
+          "Ajusta la cabeza para mantener la v\u00eda a\u00e9rea abierta y orientada hacia abajo para drenar fluidos.",
+          "Comprueba regularmente la respiraci\u00f3n hasta la llegada de los servicios de emergencia."
+        ],
+        "tips": [
+          "Si sospechas lesi\u00f3n de columna, evita moverla salvo que sea imprescindible para mantener la v\u00eda a\u00e9rea.",
+          "Abr\u00edgala para conservar su temperatura corporal."
+        ]
+      },
+      "en": {
+        "title": "Recovery position",
+        "summary": "Keep the airway open in an unconscious but breathing person.",
+        "steps": [
+          "Kneel beside the person and place the nearest arm at a right angle to the body.",
+          "Bring the far arm across the chest and bend the far knee.",
+          "Hold the bent knee and the near shoulder, then roll the person toward you until they rest on their side.",
+          "Tilt the head back slightly to maintain the airway and face it downward to drain fluids.",
+          "Check breathing regularly until emergency services arrive."
+        ],
+        "tips": [
+          "If you suspect spinal injury, avoid moving them unless necessary to keep the airway open.",
+          "Cover them to maintain body temperature."
+        ]
+      }
+    }
+  }
+];
+
+
+
+
+currentLessonId = PLAYBOOK[0] ? PLAYBOOK[0].id : null;
+let currentLanguage = detectInitialLanguage();
+let themePreference = detectInitialTheme();
+let systemDarkMatcher = null;
+
+applyTheme(themePreference);
+updateDocumentLanguage();
+applyTranslationsToDom();
+
+
+function detectInitialLanguage() {
+  try {
+    const stored = window.localStorage?.getItem(STORAGE_KEYS.language);
+    if (stored && SUPPORTED_LANGUAGES.includes(stored)) {
+      return stored;
+    }
+  } catch (error) {
+    console.warn('No se pudo leer el idioma almacenado', error);
+  }
+  const browser = (navigator.language || navigator.userLanguage || '').slice(0, 2).toLowerCase();
+  return SUPPORTED_LANGUAGES.includes(browser) ? browser : LANGUAGE_FALLBACK;
+}
+
+function detectInitialTheme() {
+  try {
+    const stored = window.localStorage?.getItem(STORAGE_KEYS.theme);
+    if (stored === 'light' || stored === 'dark' || stored === 'auto') {
+      return stored;
+    }
+  } catch (error) {
+    console.warn('No se pudo leer el tema almacenado', error);
+  }
+  return 'auto';
+}
+
+function getTranslations(lang) {
+  return TRANSLATIONS[lang] || TRANSLATIONS[LANGUAGE_FALLBACK] || {};
+}
+
+function formatMessage(message, params = {}) {
+  if (typeof message !== 'string') {
+    return message;
+  }
+  return message.replace(/\{(\w+)\}/g, (_match, key) => (
+    Object.prototype.hasOwnProperty.call(params, key) ? params[key] : {}
+  ));
+}
+
+function t(key, params = {}) {
+  const dict = getTranslations(currentLanguage);
+  if (Object.prototype.hasOwnProperty.call(dict, key)) {
+    return formatMessage(dict[key], params);
+  }
+  const fallback = getTranslations(LANGUAGE_FALLBACK);
+  if (Object.prototype.hasOwnProperty.call(fallback, key)) {
+    return formatMessage(fallback[key], params);
+  }
+  return key;
+}
+
+function getCallKeywords() {
+  return CALL_KEYWORDS[currentLanguage] || CALL_KEYWORDS[LANGUAGE_FALLBACK] || [];
+}
+
+function getCurrentLocale() {
+  const meta = LANGUAGE_METADATA[currentLanguage] || LANGUAGE_METADATA[LANGUAGE_FALLBACK] || {};
+  return meta.locale || 'es-ES';
+}
+
+function toggleThemeClass(isDark) {
+  document.body.classList.toggle('theme-dark', Boolean(isDark));
+}
+
+function handleSystemThemeChange(event) {
+  if (themePreference === 'auto') {
+    toggleThemeClass(event.matches);
+  }
+}
+
+function ensureSystemThemeListener() {
+  if (systemDarkMatcher) {
+    return;
+  }
+  const matcher = window.matchMedia('(prefers-color-scheme: dark)');
+  systemDarkMatcher = matcher;
+  if (typeof matcher.addEventListener === 'function') {
+    matcher.addEventListener('change', handleSystemThemeChange);
+  } else if (typeof matcher.addListener === 'function') {
+    matcher.addListener(handleSystemThemeChange);
+  }
+}
+
+function removeSystemThemeListener() {
+  if (!systemDarkMatcher) {
+    return;
+  }
+  if (typeof systemDarkMatcher.removeEventListener === 'function') {
+    systemDarkMatcher.removeEventListener('change', handleSystemThemeChange);
+  } else if (typeof systemDarkMatcher.removeListener === 'function') {
+    systemDarkMatcher.removeListener(handleSystemThemeChange);
+  }
+  systemDarkMatcher = null;
+}
+
+function applyTheme(preference) {
+  const normalized = preference === 'dark' || preference === 'light' ? preference : 'auto';
+  themePreference = normalized;
+  if (normalized === 'auto') {
+    ensureSystemThemeListener();
+    const matcher = systemDarkMatcher || window.matchMedia('(prefers-color-scheme: dark)');
+    toggleThemeClass(matcher.matches);
+  } else {
+    removeSystemThemeListener();
+    toggleThemeClass(normalized === 'dark');
+  }
+  if (settingThemeSelect && settingThemeSelect.value !== normalized) {
+    settingThemeSelect.value = normalized;
+  }
+  try {
+    window.localStorage?.setItem(STORAGE_KEYS.theme, normalized);
+  } catch (error) {
+    console.warn('No se pudo guardar el tema seleccionado', error);
+  }
+}
+
+function translateOptions(selectEl) {
+  if (!selectEl) {
+    return;
+  }
+  Array.from(selectEl.options).forEach((option) => {
+    const key = option.getAttribute('data-i18n');
+    if (key) {
+      option.textContent = t(key);
+    }
+  });
+}
+
+function updateDocumentLanguage() {
+  document.documentElement.lang = currentLanguage;
+  document.title = t('app.documentTitle');
+}
+
+function applyTranslationsToDom() {
+  const nodes = document.querySelectorAll('[data-i18n]');
+  nodes.forEach((element) => {
+    const key = element.getAttribute('data-i18n');
+    if (!key) {
+      return;
+    }
+    const mode = element.getAttribute('data-i18n-mode');
+    const value = t(key);
+    if (mode === 'html') {
+      element.innerHTML = value;
+    } else {
+      element.textContent = value;
+    }
+  });
+
+  const ariaNodes = document.querySelectorAll('[data-i18n-aria]');
+  ariaNodes.forEach((element) => {
+    const key = element.getAttribute('data-i18n-aria');
+    if (key) {
+      element.setAttribute('aria-label', t(key));
+    }
+  });
+
+  translateOptions(settingThemeSelect);
+  translateOptions(settingLanguageSelect);
+
+  const footerCallLabel = document.querySelector('.cta-primary__label');
+  if (footerCallLabel) {
+    footerCallLabel.textContent = t('footer.call112');
+  }
+  if (btnCallTest) {
+    btnCallTest.textContent = t('steps.testCall', { number: TEST_NUMBER });
+  }
+  if (configureApiBtn) {
+    configureApiBtn.textContent = t('footer.configureServer');
+  }
+  if (copyNumberBtn) {
+    copyNumberBtn.textContent = t('callModal.copy');
+  }
+  if (manualModal && !manualModal.classList.contains('hidden')) {
+    refreshManualContent();
+  }
+  refreshStatus();
+}
+
+function applyLanguage(languageCode) {
+  const candidate = SUPPORTED_LANGUAGES.includes(languageCode) ? languageCode : LANGUAGE_FALLBACK;
+  currentLanguage = candidate;
+  if (settingLanguageSelect && settingLanguageSelect.value !== candidate) {
+    settingLanguageSelect.value = candidate;
+  }
+  try {
+    window.localStorage?.setItem(STORAGE_KEYS.language, candidate);
+  } catch (error) {
+    console.warn('No se pudo guardar el idioma seleccionado', error);
+  }
+  if (recognition) {
+    recognition.lang = getCurrentLocale();
+  }
+  applyTranslationsToDom();
+}
+
+function getLessonContent(lesson, language = currentLanguage) {
+  if (!lesson || !lesson.translations) {
+    return { title: '', summary: '', steps: [], tips: [] };
+  }
+  const content = lesson.translations[language] || lesson.translations[LANGUAGE_FALLBACK];
+  return content || { title: '', summary: '', steps: [], tips: [] };
+}
+
+function updateManualActiveItem() {
+  manualListButtons.forEach((button) => {
+    const isActive = button.dataset.lessonId === currentLessonId;
+    button.classList.toggle('manual-list__item--active', isActive);
+  });
+}
+
+function renderManualList() {
+  if (!manualListEl) {
+    return;
+  }
+  manualListEl.innerHTML = '';
+  manualListButtons = [];
+  PLAYBOOK.forEach((lesson) => {
+    const content = getLessonContent(lesson);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'manual-list__item';
+    button.dataset.lessonId = lesson.id;
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'manual-list__item-title';
+    titleEl.textContent = content.title;
+
+    const summaryEl = document.createElement('span');
+    summaryEl.className = 'manual-list__item-summary';
+    summaryEl.textContent = content.summary;
+
+    button.appendChild(titleEl);
+    button.appendChild(summaryEl);
+    button.addEventListener('click', () => {
+      if (currentLessonId === lesson.id) {
+        return;
+      }
+      currentLessonId = lesson.id;
+      renderManualDetail();
+      updateManualActiveItem();
+    });
+
+    manualListEl.appendChild(button);
+    manualListButtons.push(button);
+  });
+  updateManualActiveItem();
+}
+
+function renderManualDetail() {
+  if (!manualDetailTitle || !manualDetailSummary || !manualStepsEl || !manualLessonExtra) {
+    return;
+  }
+  const lesson = PLAYBOOK.find((item) => item.id === currentLessonId);
+  if (!lesson) {
+    manualDetailTitle.textContent = t('manual.emptyTitle');
+    manualDetailSummary.textContent = t('manual.emptyDescription');
+    manualStepsEl.innerHTML = '';
+    manualLessonExtra.innerHTML = '';
+    return;
+  }
+  const content = getLessonContent(lesson);
+  manualDetailTitle.textContent = content.title;
+  manualDetailSummary.textContent = content.summary;
+
+  manualStepsEl.innerHTML = '';
+  (content.steps || []).forEach((step) => {
+    const li = document.createElement('li');
+    li.textContent = step;
+    manualStepsEl.appendChild(li);
+  });
+
+  const tips = Array.isArray(content.tips) ? content.tips : [];
+  manualLessonExtra.innerHTML = '';
+  if (tips.length) {
+    const heading = document.createElement('strong');
+    heading.textContent = t('manual.tipsTitle');
+    manualLessonExtra.appendChild(heading);
+
+    const list = document.createElement('ul');
+    tips.forEach((tip) => {
+      const li = document.createElement('li');
+      li.textContent = tip;
+      list.appendChild(li);
+    });
+    manualLessonExtra.appendChild(list);
+  }
+}
+
+function refreshManualContent() {
+  renderManualList();
+  renderManualDetail();
+}
+
+function showManualModal() {
+  if (!manualModal) {
+    return;
+  }
+  refreshManualContent();
+  manualModal.classList.remove('hidden');
+  manualModal.setAttribute('aria-hidden', 'false');
+}
+
+function hideManualModal() {
+  if (!manualModal) {
+    return;
+  }
+  manualModal.classList.add('hidden');
+  manualModal.setAttribute('aria-hidden', 'true');
+}
+
+function showSettingsModal() {
+  if (!settingsModal) {
+    return;
+  }
+  settingsModal.classList.remove('hidden');
+  settingsModal.setAttribute('aria-hidden', 'false');
+}
+
+function hideSettingsModal() {
+  if (!settingsModal) {
+    return;
+  }
+  settingsModal.classList.add('hidden');
+  settingsModal.setAttribute('aria-hidden', 'true');
+}
+
 
 let recognition;
 let listening = false;
@@ -85,6 +728,10 @@ let serverStopTimer = null;
 let serverAutoLoop = false;
 let serverTranscribing = false;
 let serverCancelled = false;
+let currentLessonId = null;
+let manualListButtons = [];
+let lastStatusKey = null;
+let lastStatusParams = null;
 
 initSpeech();
 checkHealth();
@@ -97,6 +744,8 @@ document.addEventListener('visibilitychange', () => {
     stopListening();
     stopSpeaking();
     hideModal();
+    hideManualModal();
+    hideSettingsModal();
   }
 });
 
@@ -112,12 +761,12 @@ if (btnMic) {
       await ensureMicPermission();
     } catch (error) {
       console.error('No se pudo inicializar el audio/microfono', error);
-      setStatus('Necesito acceso al audio para ayudarte.');
+      setStatusKey('status.audioPermission');
       return;
     }
 
     try {
-      await speak('Estoy escuchando. ¿Cuál es la situación?');
+      await speak(t('voice.initialPrompt'));
     } catch (error) {
       console.warn('No se pudo reproducir el mensaje inicial', error);
     }
@@ -129,6 +778,69 @@ if (btnMic) {
 if (callTestBtn) {
   callTestBtn.addEventListener('click', () => handleCallClick(TEST_NUMBER));
 }
+
+
+if (btnManual) {
+  btnManual.addEventListener('click', () => {
+    if (settingThemeSelect) {
+      settingThemeSelect.value = themePreference;
+    }
+    if (settingLanguageSelect) {
+      settingLanguageSelect.value = currentLanguage;
+    }
+    showManualModal();
+  });
+}
+
+if (manualModalClose) {
+  manualModalClose.addEventListener('click', hideManualModal);
+}
+
+if (manualModal) {
+  manualModal.addEventListener('click', (event) => {
+    if (event.target === manualModal) {
+      hideManualModal();
+    }
+  });
+}
+
+if (btnSettings) {
+  btnSettings.addEventListener('click', () => {
+    if (settingThemeSelect) {
+      settingThemeSelect.value = themePreference;
+    }
+    if (settingLanguageSelect) {
+      settingLanguageSelect.value = currentLanguage;
+    }
+    showSettingsModal();
+  });
+}
+
+if (settingsModalClose) {
+  settingsModalClose.addEventListener('click', hideSettingsModal);
+}
+
+if (settingsModal) {
+  settingsModal.addEventListener('click', (event) => {
+    if (event.target === settingsModal) {
+      hideSettingsModal();
+    }
+  });
+}
+
+if (settingThemeSelect) {
+  settingThemeSelect.addEventListener('change', (event) => {
+    applyTheme(event.target.value);
+  });
+}
+
+if (settingLanguageSelect) {
+  settingLanguageSelect.addEventListener('change', (event) => {
+    applyLanguage(event.target.value);
+  });
+}
+
+refreshManualContent();
 
 function setupCallUi() {
   if (call112Btn) {
@@ -151,12 +863,12 @@ function setupCallUi() {
     const number = modalNumber.textContent || '';
     try {
       await navigator.clipboard.writeText(number);
-      copyNumberBtn.textContent = 'Copiado';
+      copyNumberBtn.textContent = t('callModal.copied');
       setTimeout(() => {
-        copyNumberBtn.textContent = 'Copiar numero';
+        copyNumberBtn.textContent = t('callModal.copy');
       }, 1800);
     } catch (error) {
-      setStatus('No se pudo copiar el numero.');
+      setStatusKey('status.copyFailed');
     }
   });
 }
@@ -168,7 +880,7 @@ function setupConfigUi() {
 
   const storedBase = (() => {
     try {
-      return window.localStorage?.getItem('conrumbo.apiBase') || '';
+      return window.localStorage?.getItem(API_STORAGE_KEY) || '';
     } catch (error) {
       console.warn('No se pudo leer la configuracion del servidor', error);
       return '';
@@ -180,8 +892,8 @@ function setupConfigUi() {
   }
 
   configureApiBtn.addEventListener('click', () => {
-    const currentBase = (window.localStorage?.getItem('conrumbo.apiBase') || storedBase || '').replace(/\/api$/, '');
-    const input = window.prompt('Introduce la URL base del backend (por ejemplo http://192.168.1.50:8000)', currentBase);
+    const currentBase = (window.localStorage?.getItem(API_STORAGE_KEY) || storedBase || '').replace(/\/api$/, '');
+    const input = window.prompt(t('prompt.backendUrl'), currentBase);
     if (input === null) {
       return;
     }
@@ -189,13 +901,13 @@ function setupConfigUi() {
     const trimmed = input.trim();
     if (!trimmed) {
       try {
-        window.localStorage?.removeItem('conrumbo.apiBase');
+        window.localStorage?.removeItem(API_STORAGE_KEY);
         configureApiBtn.classList.remove('footer-link--alert');
         configureApiBtn.removeAttribute('title');
       } catch (error) {
         console.error('No se pudo limpiar la configuracion del servidor', error);
       }
-      setStatus('Servidor predeterminado restablecido.');
+      setStatusKey('status.serverReset');
       setTimeout(() => window.location.reload(), 200);
       return;
     }
@@ -204,13 +916,13 @@ function setupConfigUi() {
     const final = normalized.endsWith('/api') ? normalized : `${normalized}/api`;
 
     try {
-      window.localStorage?.setItem('conrumbo.apiBase', final);
+      window.localStorage?.setItem(API_STORAGE_KEY, final);
     } catch (error) {
       console.error('No se pudo guardar la configuracion del servidor', error);
     }
 
     configureApiBtn.title = `Servidor actual: ${final}`;
-    setStatus('Servidor actualizado. Recargando...');
+    setStatusKey('status.serverUpdated');
     setTimeout(() => window.location.reload(), 200);
   });
 }
@@ -336,7 +1048,7 @@ function setMicState(state) {
   }
   const isListening = state === 'listening';
   const isUnavailable = state === 'unavailable';
-  const label = isUnavailable ? 'No disponible' : (isListening ? 'Detener' : 'Iniciar');
+  const label = isUnavailable ? t('mic.stateUnavailable') : (isListening ? t('mic.stateStop') : t('mic.stateStart'));
 
   btnMic.classList.toggle('is-listening', isListening);
   btnMic.disabled = isUnavailable;
@@ -394,7 +1106,7 @@ function generateQr(data) {
 function initSpeech() {
   if (!USE_BROWSER_SR) {
     recognition = null;
-    setStatus('Pulsa "Iniciar" para grabar tu voz y obtener ayuda.');
+    setStatusKey('status.pressStart');
     setMicState('ready');
     return;
   }
@@ -402,7 +1114,7 @@ function initSpeech() {
   const SpeechRecognition = RawSpeechRecognition;
   if (!SpeechRecognition) {
     recognition = null;
-    setStatus('El reconocimiento de voz no es compatible con este dispositivo.');
+    setStatusKey('status.srUnsupported');
     setMicState('unavailable');
     return;
   }
@@ -414,7 +1126,7 @@ function initSpeech() {
 
   recognition.addEventListener('result', onSpeechResult);
   recognition.addEventListener('start', () => {
-    setStatus('Escuchando...');
+    setStatusKey('status.listening');
     setMicState('listening');
   });
   recognition.addEventListener('end', () => {
@@ -425,7 +1137,7 @@ function initSpeech() {
       resolve();
     }
     if (!listening) {
-      setStatus('Microfono detenido.');
+      setStatusKey('status.micStopped');
       setMicState('ready');
       return;
     }
@@ -441,7 +1153,7 @@ function initSpeech() {
     }
   });
   recognition.addEventListener('error', (event) => {
-    setStatus('Error del microfono: ' + event.error);
+    setStatusKey('status.micError', { error: event.error || '' });
     stopListening();
   });
 
@@ -452,14 +1164,14 @@ function startListening() {
   if (USE_SERVER_SR) {
     startServerStt().catch((error) => {
       console.error('No se pudo iniciar la grabacion para STT', error);
-      setStatus('No se pudo iniciar la grabacion. Intentalo de nuevo.');
+      setStatusKey('status.cannotStartRecording');
       setMicState('ready');
     });
     return;
   }
   if (!recognition || listening) {
     if (!recognition) {
-      setStatus('Reconocimiento de voz no disponible.');
+      setStatusKey('status.srUnavailable');
     }
     return;
   }
@@ -468,11 +1180,11 @@ function startListening() {
   playBeep(880, 0.12);
   try {
     recognition.start();
-    setStatus('Activando microfono...');
+    setStatusKey('status.activatingMic');
     setMicState('listening');
   } catch (error) {
     listening = false;
-    setStatus('No se pudo iniciar el microfono: ' + error.message);
+    setStatusKey('status.micInitError', { error: error.message || '' });
     setMicState('ready');
   }
 }
@@ -494,7 +1206,7 @@ function stopListening() {
   recognitionPausePromise = null;
   if (!listening) {
     playBeep(440, 0.12);
-    setStatus('Microfono detenido.');
+    setStatusKey('status.micStopped');
     setMicState('ready');
     return;
   }
@@ -505,7 +1217,7 @@ function stopListening() {
     // Ignorar
   }
   playBeep(440, 0.12);
-  setStatus('Microfono detenido.');
+  setStatusKey('status.micStopped');
   setMicState('ready');
 }
 
@@ -516,7 +1228,7 @@ async function startServerStt() {
   serverCancelled = false;
   serverChunks = [];
   setMicState('listening');
-  setStatus('Preparando microfono...');
+  setStatusKey('status.preparingMic');
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -539,7 +1251,7 @@ async function startServerStt() {
   listening = true;
   serverTranscribing = true;
   playBeep(880, 0.12);
-  setStatus('Grabando... habla ahora.');
+  setStatusKey('status.recording');
 
   serverRecorder.addEventListener('dataavailable', (event) => {
     if (event.data && event.data.size > 0) {
@@ -557,7 +1269,7 @@ async function startServerStt() {
     if (serverCancelled) {
       serverChunks = [];
       serverTranscribing = false;
-      setStatus('Microfono detenido.');
+      setStatusKey('status.micStopped');
       setMicState('ready');
       return;
     }
@@ -565,14 +1277,14 @@ async function startServerStt() {
     if (!chunks.length) {
       serverChunks = [];
       serverTranscribing = false;
-      setStatus('No se capturo audio. Intentalo de nuevo.');
+      setStatusKey('status.noAudio');
       setMicState('ready');
       return;
     }
 
     handleServerRecordingComplete(chunks, recorderMime).catch((error) => {
       console.error('No se pudo procesar el audio grabado', error);
-      setStatus('No se pudo transcribir el audio.');
+      setStatusKey('status.transcriptionFailed');
     });
   });
 
@@ -620,7 +1332,7 @@ function stopServerStt() {
     listening = false;
     serverTranscribing = false;
     setMicState('ready');
-    setStatus('Microfono detenido.');
+    setStatusKey('status.micStopped');
   }
 }
 
@@ -671,7 +1383,7 @@ async function handleServerRecordingComplete(chunks, mimeType) {
   formData.append('audio', audioBlob, 'input.webm');
 
   try {
-    setStatus('Transcribiendo...');
+    setStatusKey('status.transcribing');
     const response = await fetch(STT_URL, {
       method: 'POST',
       body: formData
@@ -682,11 +1394,11 @@ async function handleServerRecordingComplete(chunks, mimeType) {
     const payload = await response.json();
     const transcript = (payload.text || '').trim();
 
-    liveTextEl.textContent = transcript || '—';
+    liveTextEl.textContent = transcript || '\u2014';
     if (!transcript) {
       serverAutoLoop = false;
-      await speak('No he entendido. ¿Puedes repetir?');
-      setStatus('No he entendido. Pulsa iniciar para intentarlo de nuevo.');
+      await speak(t('voice.repeatPrompt'));
+      setStatusKey('status.noUnderstanding');
       return;
     }
 
@@ -741,7 +1453,7 @@ function onSpeechResult(event) {
   }
 
   if (interimTranscript) {
-    liveTextEl.textContent = interimTranscript.trim();
+    liveTextEl.textContent = transcript || '\u2014';
   }
 
   const cleanedFinal = finalTranscript.trim();
@@ -750,7 +1462,7 @@ function onSpeechResult(event) {
   }
 
   lastFinalTranscript = cleanedFinal;
-  liveTextEl.textContent = cleanedFinal;
+    liveTextEl.textContent = transcript || '\u2014';
   checkForCallKeywords(cleanedFinal);
   processUtterance(cleanedFinal);
 }
@@ -806,7 +1518,7 @@ async function processUtterance(text) {
   pendingController = supportsAbortController ? new AbortController() : null;
 
   stopSpeaking();
-  setStatus('Procesando instruccion...');
+  setStatusKey('status.processingInstruction');
 
   try {
     const guideResponse = await fetch(GUIDE_URL, {
@@ -815,19 +1527,19 @@ async function processUtterance(text) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: text,
-        lang: 'es-ES',
+        lang: getCurrentLocale(),
         session_id: sessionId
       })
     });
 
     if (!guideResponse.ok) {
       const payload = await guideResponse.json().catch(() => ({}));
-      throw new Error(payload.error || 'No se pudo obtener la siguiente instruccion.');
+      throw new Error(payload.error || t('error.nextInstruction'));
     }
 
     const guideData = await guideResponse.json();
     const stepIndex = typeof guideData.step === 'number' ? guideData.step - 1 : null;
-    const stepText = guideData.text || guideData.say || 'No hay mas instrucciones.';
+    const stepText = guideData.text || guideData.say || t('status.noMoreInstructions');
     const speechText = guideData.say || guideData.text || stepText;
     const shouldContinue = Boolean(guideData.next);
     serverAutoLoop = shouldContinue;
@@ -854,16 +1566,16 @@ async function processUtterance(text) {
     }
 
     if (shouldContinue) {
-      setStatus('Instruccion lista. Te escucho de nuevo.');
+      setStatusKey('status.instructionReady');
     } else {
-      setStatus('Protocolo completado. Permanece atento a la ayuda profesional.');
+      setStatusKey('status.protocolCompleted');
     }
   } catch (error) {
     if (error.name === 'AbortError') {
       return;
     }
     serverAutoLoop = false;
-    setStatus(`Error: ${error.message}`);
+    setStatusKey('status.errorWithMessage', { message: error.message });
   } finally {
     pendingController = null;
   }
@@ -906,7 +1618,8 @@ async function speak(text) {
   await ensureSpeechReady();
   stopSpeaking();
   activeUtterance = new SpeechSynthesisUtterance(text);
-  activeUtterance.lang = 'es-ES';
+  const targetLocale = getCurrentLocale();
+  activeUtterance.lang = targetLocale;
   activeUtterance.pitch = 1;
   activeUtterance.rate = 1;
   activeUtterance.volume = 1;
@@ -914,10 +1627,12 @@ async function speak(text) {
   const voices = synth.getVoices();
   if (voices && voices.length) {
     const lowerLang = (value) => (value || '').toLowerCase();
-    const exact = voices.find((voice) => lowerLang(voice.lang) === 'es-es');
-    const locale = voices.find((voice) => lowerLang(voice.lang).startsWith('es'));
-    const contains = voices.find((voice) => lowerLang(voice.lang).includes('es'));
-    activeUtterance.voice = exact || locale || contains || voices[0];
+    const targetLower = (targetLocale || '').toLowerCase();
+    const baseLang = targetLower.split('-')[0] || targetLower;
+    const exact = voices.find((voice) => lowerLang(voice.lang) === targetLower);
+    const localeMatch = voices.find((voice) => lowerLang(voice.lang).startsWith(baseLang));
+    const contains = voices.find((voice) => lowerLang(voice.lang).includes(baseLang));
+    activeUtterance.voice = exact || localeMatch || contains || voices[0];
   }
   return new Promise((resolve) => {
     let resolved = false;
@@ -937,7 +1652,7 @@ async function speak(text) {
     };
     activeUtterance.onerror = (event) => {
       console.error('Error reproduciendo la instruccion', event.error || event);
-      setStatus('No se pudo reproducir la instruccion en voz alta.');
+      setStatusKey('status.speechFailed');
       handleSpeechFinished();
       settle();
     };
@@ -949,7 +1664,7 @@ async function speak(text) {
       window.setTimeout(() => settle(), 120);
     } catch (error) {
       console.error('No se pudo iniciar la reproduccion de la instruccion', error);
-      setStatus('No se pudo reproducir la instruccion en voz alta.');
+      setStatusKey('status.speechFailed');
       handleSpeechFinished();
       settle();
     }
@@ -964,8 +1679,23 @@ function stopSpeaking() {
   activeUtterance = null;
 }
 
-function setStatus(message) {
+function setStatusMessage(message) {
+  lastStatusKey = null;
+  lastStatusParams = null;
   statusEl.textContent = message;
+}
+
+function setStatusKey(key, params = {}) {
+  lastStatusKey = key;
+  lastStatusParams = params;
+  statusEl.textContent = t(key, params);
+}
+
+function refreshStatus() {
+  if (!lastStatusKey) {
+    return;
+  }
+  statusEl.textContent = t(lastStatusKey, lastStatusParams || {});
 }
 
 function ensureAudioContext() {
@@ -1002,7 +1732,8 @@ function playBeep(frequency = 880, duration = 0.15) {
 
 function checkForCallKeywords(text) {
   const normalized = text.toLowerCase();
-  if (CALL_KEYWORDS.some((keyword) => normalized.includes(keyword))) {
+  const keywords = getCallKeywords();
+  if (keywords.some((keyword) => normalized.includes(keyword))) {
     highlightCallButtons();
   }
 }
@@ -1027,11 +1758,11 @@ async function checkHealth() {
     if (!response.ok) {
       throw new Error();
     }
-    setStatus('Sistema listo. Pulsa "Iniciar" para comenzar.');
+    setStatusKey('status.systemReady');
     configureApiBtn?.classList.remove('footer-link--alert');
   } catch (error) {
     console.error('No se pudo verificar la API', error);
-    setStatus('No se pudo conectar con la API. Pulsa "Configurar servidor" e introduce la direccion correcta.');
+    setStatusKey('status.apiUnavailable');
     configureApiBtn?.classList.add('footer-link--alert');
   }
 
