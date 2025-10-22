@@ -78,7 +78,9 @@ const USE_BROWSER_SR = Boolean(RawSpeechRecognition) && IS_CHROME_FAMILY && !IS_
 const USE_SERVER_SR = !USE_BROWSER_SR;
 const GUIDE_URL = `${API_BASE}/guide`;
 const STT_URL = `${API_BASE}/stt`;
-const SERVER_STT_DURATION_MS = 5000;
+const SERVER_STT_DURATION_MS = 3000;
+const MAX_SILENCE_AUTO_RETRIES = 2;
+const PASSIVE_AUTO_EVENTS = ['pointerdown', 'keydown', 'touchstart'];
 
 const STORAGE_KEYS = {
   apiBase: API_STORAGE_KEY,
@@ -732,12 +734,19 @@ let currentLessonId = null;
 let manualListButtons = [];
 let lastStatusKey = null;
 let lastStatusParams = null;
+let serverShouldAutoRestart = false;
+let autoSilenceRetryCount = 0;
+let autoAssistTriggered = false;
+let autoAssistArmed = false;
+let permissionMonitor = null;
+let autoAssistHandler = null;
 
 initSpeech();
 checkHealth();
 setupCallUi();
 setupConfigUi();
 primeSpeechVoices();
+setupAutoAssist();
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
@@ -746,32 +755,33 @@ document.addEventListener('visibilitychange', () => {
     hideModal();
     hideManualModal();
     hideSettingsModal();
+    resetAutoAssist();
+  } else if (!listening && !serverTranscribing) {
+    triggerAutoAssist().catch(() => {
+      armPassiveAutoAssist();
+    });
   }
 });
 
 if (btnMic) {
   btnMic.addEventListener('click', async () => {
+    detachPassiveAutoAssist();
     if (listening || serverTranscribing) {
       stopListening();
+      autoAssistTriggered = false;
       return;
     }
-
     try {
-      await initAudioGesture();
-      await ensureMicPermission();
+      const started = await beginAssistFlow({ fromUser: true });
+      autoAssistTriggered = started;
+      if (!started) {
+        armPassiveAutoAssist();
+      }
     } catch (error) {
       console.error('No se pudo inicializar el audio/microfono', error);
-      setStatusKey('status.audioPermission');
-      return;
+      autoAssistTriggered = false;
+      armPassiveAutoAssist();
     }
-
-    try {
-      await speak(t('voice.initialPrompt'));
-    } catch (error) {
-      console.warn('No se pudo reproducir el mensaje inicial', error);
-    }
-
-    startListening();
   });
 }
 
@@ -1155,17 +1165,20 @@ function initSpeech() {
   recognition.addEventListener('error', (event) => {
     setStatusKey('status.micError', { error: event.error || '' });
     stopListening();
+    resetAutoAssist({ rearmPassive: true });
   });
 
   setMicState('ready');
 }
 
 function startListening() {
+  autoSilenceRetryCount = 0;
   if (USE_SERVER_SR) {
     startServerStt().catch((error) => {
       console.error('No se pudo iniciar la grabacion para STT', error);
       setStatusKey('status.cannotStartRecording');
       setMicState('ready');
+      resetAutoAssist({ rearmPassive: true });
     });
     return;
   }
@@ -1186,6 +1199,7 @@ function startListening() {
     listening = false;
     setStatusKey('status.micInitError', { error: error.message || '' });
     setMicState('ready');
+    resetAutoAssist({ rearmPassive: true });
   }
 }
 
@@ -1397,18 +1411,26 @@ async function handleServerRecordingComplete(chunks, mimeType) {
     liveTextEl.textContent = transcript || '\u2014';
     if (!transcript) {
       serverAutoLoop = false;
-      await speak(t('voice.repeatPrompt'));
+      autoSilenceRetryCount += 1;
+      serverShouldAutoRestart = true;
+      if (autoSilenceRetryCount <= MAX_SILENCE_AUTO_RETRIES) {
+        await speak(t('voice.repeatPrompt'));
+      }
       setStatusKey('status.noUnderstanding');
       return;
     }
 
+    autoSilenceRetryCount = 0;
     checkForCallKeywords(transcript);
     await processUtterance(transcript);
     shouldRestart = serverAutoLoop;
   } finally {
     serverChunks = [];
     serverTranscribing = false;
-    if (shouldRestart) {
+    const pendingAutoRestart = serverShouldAutoRestart;
+    const autoResume = shouldRestart || pendingAutoRestart;
+    serverShouldAutoRestart = false;
+    if (autoResume) {
       startListening();
     } else {
       setMicState('ready');
@@ -1437,6 +1459,185 @@ async function initAudioGesture() {
     await ctx.resume();
   }
   return ctx;
+}
+
+function detachPassiveAutoAssist() {
+  if (typeof document === 'undefined') {
+    autoAssistArmed = false;
+    autoAssistHandler = null;
+    return;
+  }
+  if (!autoAssistArmed || !autoAssistHandler) {
+    autoAssistArmed = false;
+    autoAssistHandler = null;
+    return;
+  }
+  PASSIVE_AUTO_EVENTS.forEach((eventName) => {
+    document.removeEventListener(eventName, autoAssistHandler);
+  });
+  autoAssistArmed = false;
+  autoAssistHandler = null;
+}
+
+function armPassiveAutoAssist() {
+  if (autoAssistTriggered || autoAssistArmed) {
+    return;
+  }
+  if (typeof document === 'undefined') {
+    return;
+  }
+  detachPassiveAutoAssist();
+  autoAssistArmed = true;
+  autoAssistHandler = () => {
+    detachPassiveAutoAssist();
+    triggerAutoAssist().catch((error) => {
+      console.warn('No se pudo iniciar automaticamente el asistente', error);
+    });
+  };
+  PASSIVE_AUTO_EVENTS.forEach((eventName) => {
+    document.addEventListener(eventName, autoAssistHandler, { once: true });
+  });
+}
+
+function resetAutoAssist(options = {}) {
+  const { rearmPassive = false } = options;
+  autoAssistTriggered = false;
+  if (rearmPassive) {
+    armPassiveAutoAssist();
+    return;
+  }
+  detachPassiveAutoAssist();
+}
+
+async function triggerAutoAssist() {
+  if (autoAssistTriggered || listening || serverTranscribing) {
+    return;
+  }
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    setStatusKey('status.srUnsupported');
+    return;
+  }
+  detachPassiveAutoAssist();
+  autoAssistTriggered = true;
+  try {
+    const started = await beginAssistFlow();
+    if (!started) {
+      autoAssistTriggered = false;
+      armPassiveAutoAssist();
+    }
+  } catch (error) {
+    autoAssistTriggered = false;
+    armPassiveAutoAssist();
+    throw error;
+  }
+}
+
+function setupAutoAssist() {
+  if (typeof navigator === 'undefined') {
+    return;
+  }
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    setStatusKey('status.srUnsupported');
+    return;
+  }
+
+  if (navigator.permissions && typeof navigator.permissions.query === 'function') {
+    navigator.permissions.query({ name: 'microphone' }).then((status) => {
+      updatePermissionMonitor(status);
+      handlePermissionState(status.state);
+    }).catch(() => {
+      armPassiveAutoAssist();
+    });
+  } else {
+    armPassiveAutoAssist();
+  }
+}
+
+function updatePermissionMonitor(status) {
+  if (!status) {
+    return;
+  }
+  if (permissionMonitor) {
+    if (typeof permissionMonitor.removeEventListener === 'function') {
+      permissionMonitor.removeEventListener('change', onPermissionChange);
+    } else {
+      permissionMonitor.onchange = null;
+    }
+  }
+  permissionMonitor = status;
+  if (typeof status.addEventListener === 'function') {
+    status.addEventListener('change', onPermissionChange);
+  } else {
+    status.onchange = onPermissionChange;
+  }
+}
+
+function onPermissionChange(event) {
+  const state = event?.target?.state || permissionMonitor?.state;
+  handlePermissionState(state);
+}
+
+function handlePermissionState(state) {
+  const idle = !listening && !serverTranscribing;
+  if (!state) {
+    armPassiveAutoAssist();
+    return;
+  }
+  if (state === 'granted') {
+    triggerAutoAssist().catch((error) => {
+      console.warn('No se pudo iniciar automaticamente tras permiso concedido', error);
+    });
+    return;
+  }
+  if (state === 'prompt') {
+    resetAutoAssist({ rearmPassive: true });
+    if (idle) {
+      setStatusKey('status.audioPermission');
+    }
+    return;
+  }
+  if (state === 'denied') {
+    resetAutoAssist();
+    if (idle) {
+      setStatusKey('status.audioPermission');
+    }
+    return;
+  }
+}
+
+async function beginAssistFlow(options = {}) {
+  const { fromUser = false } = options;
+  try {
+    await initAudioGesture();
+  } catch (error) {
+    console.warn('No se pudo preparar el audio', error);
+  }
+
+  try {
+    await ensureMicPermission();
+  } catch (error) {
+    if (error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) {
+      setStatusKey('status.audioPermission');
+    } else if (error && error.name === 'NotFoundError') {
+      setStatusKey('status.micError', { error: 'No disponible' });
+    } else {
+      setStatusKey('status.cannotStartRecording');
+    }
+    if (fromUser) {
+      throw error;
+    }
+    return false;
+  }
+
+  try {
+    await speak(t('voice.initialPrompt'));
+  } catch (error) {
+    console.warn('No se pudo reproducir el mensaje inicial', error);
+  }
+
+  setStatusKey(USE_SERVER_SR ? 'status.preparingMic' : 'status.activatingMic');
+  startListening();
+  return listening || serverTranscribing;
 }
 function onSpeechResult(event) {
   let interimTranscript = '';
@@ -1543,6 +1744,9 @@ async function processUtterance(text) {
     const speechText = guideData.say || guideData.text || stepText;
     const shouldContinue = Boolean(guideData.next);
     serverAutoLoop = shouldContinue;
+    if (USE_SERVER_SR) {
+      serverShouldAutoRestart = !shouldContinue;
+    }
 
     await pauseRecognitionForSpeech();
     renderGuideStep({
@@ -1552,17 +1756,12 @@ async function processUtterance(text) {
       totalSteps: guideData.total_steps || guideData.totalSteps
     });
 
-    if (USE_BROWSER_SR && !shouldContinue) {
-      recognitionShouldResume = false;
+    if (USE_BROWSER_SR) {
+      recognitionShouldResume = true;
     }
 
     if (speechText) {
       await speak(speechText);
-    }
-
-    if (USE_BROWSER_SR && !shouldContinue) {
-      listening = false;
-      setMicState('ready');
     }
 
     if (shouldContinue) {
