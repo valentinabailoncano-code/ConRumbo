@@ -1,13 +1,36 @@
 'use strict';
 
 const API_STORAGE_KEY = 'conrumbo.apiBase';
+const BACKEND_URL_STORAGE_KEY = 'backend_url';
+const BOOT_TIME_MARK = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+  ? performance.now()
+  : Date.now();
+
+window.addEventListener('load', () => {
+  const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+    ? performance.now()
+    : Date.now();
+  const elapsed = Math.round(now - BOOT_TIME_MARK);
+  log('Tiempo de arranque (ms):', elapsed);
+});
 
 // Resolve API base dynamically so mobile devices reach the backend.
 const API_BASE = (() => {
+  let storageOverride = null;
+  if (typeof window !== 'undefined') {
+    try {
+      const storedBackend = window.localStorage?.getItem(BACKEND_URL_STORAGE_KEY);
+      const storedApi = window.localStorage?.getItem(API_STORAGE_KEY);
+      storageOverride = storedBackend || storedApi || null;
+    } catch (error) {
+      console.warn('No se pudo leer la configuracion del backend', error);
+    }
+  }
+
   const override = (typeof window !== 'undefined' && (
     window.CONRUMBO_API_BASE ||
     new URLSearchParams(window.location.search).get('api_base') ||
-    window.localStorage?.getItem(API_STORAGE_KEY)
+    storageOverride
   )) || null;
 
   if (override) {
@@ -84,6 +107,7 @@ const PASSIVE_AUTO_EVENTS = ['pointerdown', 'keydown', 'touchstart'];
 
 const STORAGE_KEYS = {
   apiBase: API_STORAGE_KEY,
+  backendUrl: BACKEND_URL_STORAGE_KEY,
   language: 'conrumbo.language',
   theme: 'conrumbo.theme'
 };
@@ -741,7 +765,6 @@ let autoAssistArmed = false;
 let permissionMonitor = null;
 let autoAssistHandler = null;
 
-initSpeech();
 checkHealth();
 setupCallUi();
 setupConfigUi();
@@ -890,7 +913,12 @@ function setupConfigUi() {
 
   const storedBase = (() => {
     try {
-      return window.localStorage?.getItem(API_STORAGE_KEY) || '';
+      const backend = window.localStorage?.getItem(STORAGE_KEYS.backendUrl);
+      if (backend) {
+        return backend;
+      }
+      const legacy = window.localStorage?.getItem(API_STORAGE_KEY) || '';
+      return legacy.replace(/\/api$/, '');
     } catch (error) {
       console.warn('No se pudo leer la configuracion del servidor', error);
       return '';
@@ -901,8 +929,8 @@ function setupConfigUi() {
     configureApiBtn.title = `Servidor actual: ${storedBase}`;
   }
 
-  configureApiBtn.addEventListener('click', () => {
-    const currentBase = (window.localStorage?.getItem(API_STORAGE_KEY) || storedBase || '').replace(/\/api$/, '');
+  configureApiBtn.addEventListener('click', async () => {
+    const currentBase = getBackendURL();
     const input = window.prompt(t('prompt.backendUrl'), currentBase);
     if (input === null) {
       return;
@@ -912,26 +940,45 @@ function setupConfigUi() {
     if (!trimmed) {
       try {
         window.localStorage?.removeItem(API_STORAGE_KEY);
+        window.localStorage?.removeItem(STORAGE_KEYS.backendUrl);
         configureApiBtn.classList.remove('footer-link--alert');
         configureApiBtn.removeAttribute('title');
       } catch (error) {
         console.error('No se pudo limpiar la configuracion del servidor', error);
       }
+      toast('Servidor eliminado');
       setStatusKey('status.serverReset');
       setTimeout(() => window.location.reload(), 200);
       return;
     }
 
     const normalized = trimmed.replace(/\/$/, '');
-    const final = normalized.endsWith('/api') ? normalized : `${normalized}/api`;
+    const backendOnly = normalized.replace(/\/api$/, '');
+    const final = `${backendOnly}/api`;
 
     try {
       window.localStorage?.setItem(API_STORAGE_KEY, final);
+      window.localStorage?.setItem(STORAGE_KEYS.backendUrl, backendOnly);
     } catch (error) {
       console.error('No se pudo guardar la configuracion del servidor', error);
     }
 
-    configureApiBtn.title = `Servidor actual: ${final}`;
+    configureApiBtn.title = `Servidor actual: ${backendOnly}`;
+    toast('Servidor guardado');
+
+    try {
+      await fetch(`${backendOnly}/save-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          backend_url: backendOnly,
+          voice_lang: getCurrentLocale(),
+        }),
+      });
+    } catch (error) {
+      console.warn('No se pudo sincronizar la configuracion con el backend', error);
+    }
+
     setStatusKey('status.serverUpdated');
     setTimeout(() => window.location.reload(), 200);
   });
@@ -1084,6 +1131,10 @@ function hideModal() {
 }
 
 function handleCallClick(number) {
+  log('Accion llamada', number);
+  llamar(number).catch((error) => {
+    log('Fallo al solicitar la llamada', error);
+  });
   if (isMobile()) {
     window.location.href = `tel:${number}`;
     return;
@@ -1136,10 +1187,12 @@ function initSpeech() {
 
   recognition.addEventListener('result', onSpeechResult);
   recognition.addEventListener('start', () => {
+    log('ASR start');
     setStatusKey('status.listening');
     setMicState('listening');
   });
   recognition.addEventListener('end', () => {
+    log('ASR end');
     if (recognitionPauseResolver) {
       const resolve = recognitionPauseResolver;
       recognitionPauseResolver = null;
@@ -1163,6 +1216,7 @@ function initSpeech() {
     }
   });
   recognition.addEventListener('error', (event) => {
+    log('ASR error', event);
     setStatusKey('status.micError', { error: event.error || '' });
     stopListening();
     resetAutoAssist({ rearmPassive: true });
@@ -1607,6 +1661,9 @@ function handlePermissionState(state) {
 
 async function beginAssistFlow(options = {}) {
   const { fromUser = false } = options;
+  if (USE_BROWSER_SR && !recognition) {
+    initSpeech();
+  }
   try {
     await initAudioGesture();
   } catch (error) {
@@ -1654,7 +1711,7 @@ function onSpeechResult(event) {
   }
 
   if (interimTranscript) {
-    liveTextEl.textContent = transcript || '\u2014';
+    liveTextEl.textContent = interimTranscript;
   }
 
   const cleanedFinal = finalTranscript.trim();
@@ -1663,9 +1720,13 @@ function onSpeechResult(event) {
   }
 
   lastFinalTranscript = cleanedFinal;
-    liveTextEl.textContent = transcript || '\u2014';
+  liveTextEl.textContent = cleanedFinal;
+  log('ASR text:', cleanedFinal);
+  manejarComandoVoz(cleanedFinal);
   checkForCallKeywords(cleanedFinal);
-  processUtterance(cleanedFinal);
+  processUtterance(cleanedFinal).catch((error) => {
+    log('ASR process error', error);
+  });
 }
 
 function pauseRecognitionForSpeech() {
@@ -1816,6 +1877,7 @@ async function speak(text) {
   }
   await ensureSpeechReady();
   stopSpeaking();
+  log('TTS speak:', text);
   activeUtterance = new SpeechSynthesisUtterance(text);
   const targetLocale = getCurrentLocale();
   activeUtterance.lang = targetLocale;
@@ -1843,13 +1905,16 @@ async function speak(text) {
       resolve();
     };
     activeUtterance.onstart = () => {
+      log('TTS start');
       settle();
     };
     activeUtterance.onend = (event) => {
+      log('TTS end');
       handleSpeechFinished();
       settle();
     };
     activeUtterance.onerror = (event) => {
+      log('TTS error', event);
       console.error('Error reproduciendo la instruccion', event.error || event);
       setStatusKey('status.speechFailed');
       handleSpeechFinished();
@@ -1965,4 +2030,219 @@ async function checkHealth() {
     configureApiBtn?.classList.add('footer-link--alert');
   }
 
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  byId('btnAjustes')?.addEventListener('click', abrirAjustes);
+  byId('btnManual')?.addEventListener('click', abrirManual);
+  byId('btnConfigServidor')?.addEventListener('click', configurarServidor);
+  byId('btnLlamada112')?.addEventListener('click', () => llamar('112'));
+  byId('btnLlamadaTest')?.addEventListener('click', () => llamar('689876686'));
+  byId('btnIniciarVoz')?.addEventListener('click', iniciarVoz);
+});
+
+function byId(id) {
+  return typeof document !== 'undefined' ? document.getElementById(id) : null;
+}
+
+function log(...args) {
+  try {
+    console.log('[ConRumbo]', ...args);
+  } catch (error) {
+    // silencio en entornos sin consola
+  }
+}
+
+function toast(message) {
+  if (!message) {
+    return;
+  }
+  log('Toast:', message);
+  if (typeof setStatusMessage === 'function') {
+    setStatusMessage(message);
+    window.setTimeout(() => {
+      if (lastStatusKey) {
+        refreshStatus();
+      }
+    }, 2000);
+  } else if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+    window.alert(message);
+  }
+}
+
+function getBackendURL() {
+  if (typeof window === 'undefined') {
+    return 'http://127.0.0.1:8000';
+  }
+  try {
+    const stored = window.localStorage?.getItem(STORAGE_KEYS.backendUrl);
+    if (stored) {
+      return stored;
+    }
+  } catch (error) {
+    log('No se pudo leer backend_url', error);
+  }
+  if (API_BASE && API_BASE.endsWith('/api')) {
+    return API_BASE.slice(0, -4);
+  }
+  return API_BASE || 'http://127.0.0.1:8000';
+}
+
+async function configurarServidor() {
+  const promptValue = window.prompt('URL del backend (e.g. http://127.0.0.1:8000):', getBackendURL());
+  if (promptValue === null) {
+    return;
+  }
+  const trimmed = promptValue.trim();
+  if (!trimmed) {
+    toast('Servidor eliminado');
+    try {
+      window.localStorage?.removeItem(API_STORAGE_KEY);
+      window.localStorage?.removeItem(STORAGE_KEYS.backendUrl);
+    } catch (error) {
+      log('No se pudo limpiar backend_url', error);
+    }
+    configureApiBtn?.classList.remove('footer-link--alert');
+    configureApiBtn?.removeAttribute('title');
+    setTimeout(() => window.location.reload(), 200);
+    return;
+  }
+  const backendOnly = trimmed.replace(/\/$/, '').replace(/\/api$/, '');
+  const apiBase = `${backendOnly}/api`;
+  try {
+    window.localStorage?.setItem(STORAGE_KEYS.backendUrl, backendOnly);
+    window.localStorage?.setItem(API_STORAGE_KEY, apiBase);
+  } catch (error) {
+    log('No se pudo guardar backend_url', error);
+  }
+  if (configureApiBtn) {
+    configureApiBtn.classList.remove('footer-link--alert');
+    configureApiBtn.title = `Servidor actual: ${backendOnly}`;
+  }
+  toast('Servidor guardado');
+  try {
+    await fetch(`${backendOnly}/save-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backend_url: backendOnly, voice_lang: getCurrentLocale() }),
+    });
+  } catch (error) {
+    log('No se pudo sincronizar la configuracion', error);
+  }
+  setTimeout(() => window.location.reload(), 200);
+}
+
+async function llamar(numero) {
+  const backend = getBackendURL().replace(/\/$/, '');
+  const endpoint = `${backend}/call`;
+  log('Llamada solicitada', numero, '->', endpoint);
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: numero }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    toast('Llamada enviada');
+    return await response.json();
+  } catch (error) {
+    log('Error al llamar', error);
+    toast('Error al llamar');
+    throw error;
+  }
+}
+
+function mostrarPanel(nombre) {
+  const target = (nombre || '').toLowerCase();
+  log('Mostrar panel solicitado', target);
+  if (target === 'ajustes') {
+    if (settingThemeSelect) {
+      settingThemeSelect.value = themePreference;
+    }
+    if (settingLanguageSelect) {
+      settingLanguageSelect.value = currentLanguage;
+    }
+    showSettingsModal();
+    return;
+  }
+  if (target === 'manual') {
+    if (settingThemeSelect) {
+      settingThemeSelect.value = themePreference;
+    }
+    if (settingLanguageSelect) {
+      settingLanguageSelect.value = currentLanguage;
+    }
+    showManualModal();
+    return;
+  }
+  log('Panel desconocido', nombre);
+}
+
+function abrirAjustes() {
+  log('Abrir ajustes');
+  mostrarPanel('ajustes');
+}
+
+function abrirManual() {
+  log('Abrir manual');
+  mostrarPanel('manual');
+}
+
+function crearRecognition() {
+  if (!USE_BROWSER_SR) {
+    toast('Reconocimiento de voz no soportado');
+    return null;
+  }
+  if (!recognition) {
+    initSpeech();
+  }
+  if (!recognition) {
+    toast('Reconocimiento de voz no soportado');
+    return null;
+  }
+  recognition.lang = 'es-ES';
+  return recognition;
+}
+
+async function iniciarVoz() {
+  log('Iniciar voz accionado');
+  const rec = crearRecognition();
+  if (!rec) {
+    return;
+  }
+  try {
+    const started = await beginAssistFlow({ fromUser: true });
+    if (!started && !listening && !serverTranscribing) {
+      try {
+        rec.start();
+      } catch (error) {
+        log('ASR start err', error);
+      }
+    }
+  } catch (error) {
+    log('ASR start err', error);
+    toast('Error de microfono');
+    return;
+  }
+  speak('Iniciando guia. Paso 1: comprobar seguridad de la escena.').catch((error) => {
+    log('TTS inicio err', error);
+  });
+}
+
+function manejarComandoVoz(texto) {
+  if (!texto) {
+    return;
+  }
+  if (/siguiente/i.test(texto)) {
+    log('Comando voz: siguiente');
+    speak('Paso siguiente.').catch((error) => log('TTS cmd err', error));
+  } else if (/repetir/i.test(texto)) {
+    log('Comando voz: repetir');
+    speak('Repito el ultimo paso.').catch((error) => log('TTS cmd err', error));
+  } else {
+    log('Comando voz libre:', texto);
+    speak(`He entendido: ${texto}`).catch((error) => log('TTS cmd err', error));
+  }
 }

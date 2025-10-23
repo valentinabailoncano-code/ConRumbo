@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from time import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -17,18 +17,43 @@ from emergency_bot import BotEngine
 from metrics import Metrics
 
 BASE_DIR = Path(__file__).resolve().parent
+ALLOWED_CORS_ORIGINS = [
+    r"http://localhost(:\d+)?",
+    r"https://localhost(:\d+)?",
+    r"http://127\.0\.0\.1(:\d+)?",
+    r"https://127\.0\.0\.1(:\d+)?",
+    r"http://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?",
+    r"https://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?",
+    r"http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?",
+    r"https://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?",
+    r"http://172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?",
+    r"https://172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?",
+]
 MAX_HISTORY_ITEMS = 20
 MAX_SESSIONS = 1000
 STT_SAMPLE_RATE = 16000
 
 app = Flask(__name__)
-CORS(app)
+CORS(
+    app,
+    resources={
+        r"/api/*": {"origins": ALLOWED_CORS_ORIGINS},
+        r"/*": {"origins": ALLOWED_CORS_ORIGINS},
+    },
+    supports_credentials=False,
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "OPTIONS"],
+)
 
 bot = BotEngine(protocols_path=BASE_DIR / "protocols.json")
 metrics = Metrics(csv_path=BASE_DIR / "metrics_log.csv")
 
-# Memoria en caliente para el contexto de cada sesión
+# Memoria en caliente para el contexto de cada sesion
 _session_state: Dict[str, Dict[str, Any]] = {}
+_runtime_config: Dict[str, Optional[str]] = {
+    "backend_url": None,
+    "voice_lang": "es-ES",
+}
 
 
 def _resolve_session(data: Dict[str, Any]) -> str:
@@ -111,9 +136,90 @@ def cleanup_paths(paths: list[str]) -> None:
             continue
 
 
+def place_call(number: str) -> Dict[str, Any]:
+    """Encapsula la integracion con el carrier o usa un mock en su defecto."""
+    sanitized = str(number or "").strip()
+    if not sanitized:
+        raise ValueError("number_required")
+
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_FROM_NUMBER")
+    twiml_url = (
+        os.getenv("TWILIO_TWIML_URL")
+        or os.getenv("TWILIO_CALL_URL")
+        or "http://demo.twilio.com/docs/voice.xml"
+    )
+
+    if account_sid and auth_token and from_number:
+        try:
+            from twilio.rest import Client  # type: ignore
+        except ImportError as exc:  # pragma: no cover - depende de entorno
+            app.logger.warning("Twilio no disponible: %s", exc)
+        else:
+            try:
+                client = Client(account_sid, auth_token)
+                call = client.calls.create(
+                    to=sanitized,
+                    from_=from_number,
+                    url=twiml_url,
+                )
+                app.logger.info("Llamada enviada vía Twilio a %s", sanitized)
+                return {"ok": True, "provider": "twilio", "sid": call.sid}
+            except Exception as exc:  # pragma: no cover - depende del carrier
+                app.logger.exception("Falló la llamada saliente a %s", sanitized)
+                return {"ok": False, "error": str(exc)}
+
+    app.logger.info("Simulando llamada (mock) a %s", sanitized)
+    return {"ok": True, "provider": "mock"}
+
+
+@app.get("/health")
+def health() -> Any:
+    return jsonify({"status": "ok"})
+
+
 @app.get("/api/health")
-def health():
+def api_health():
     return jsonify({"ok": True})
+
+
+@app.post("/call")
+def call_endpoint():
+    data = request.get_json(silent=True) or {}
+    number = (data.get("to") or "").strip()
+    if not number:
+        return jsonify({"ok": False, "error": "missing_number"}), 400
+
+    try:
+        result = place_call(number)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    if not result.get("ok"):
+        return jsonify({"ok": False, "error": result.get("error", "call_failed")}), 502
+
+    app.logger.info("Llamada preparada para %s (%s)", number, result.get("provider", "mock"))
+    return jsonify({"ok": True, "mode": result.get("provider", "mock")})
+
+
+@app.post("/save-config")
+def save_config():
+    data = request.get_json(silent=True) or {}
+    backend_url = data.get("backend_url")
+    voice_lang = data.get("voice_lang")
+
+    if backend_url is not None:
+        _runtime_config["backend_url"] = str(backend_url).strip() or None
+    if voice_lang is not None:
+        _runtime_config["voice_lang"] = str(voice_lang).strip() or None
+
+    app.logger.info(
+        "Configuracion guardada: backend_url=%s voice_lang=%s",
+        _runtime_config.get("backend_url"),
+        _runtime_config.get("voice_lang"),
+    )
+    return jsonify({"ok": True, "config": _runtime_config})
 
 
 @app.post("/api/stt")
@@ -350,5 +456,11 @@ def feedback():
     return jsonify({"ok": True})
 
 
+@app.before_serving
+def _log_startup() -> None:
+    app.logger.info("Flask listo en :8000")
+
+
 if __name__ == "__main__":
+    print("Flask listo en :8000")
     app.run(host="0.0.0.0", port=8000, debug=True)
