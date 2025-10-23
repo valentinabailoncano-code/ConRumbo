@@ -6,9 +6,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 from time import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort, send_from_directory
 from flask_cors import CORS
 import speech_recognition as sr
 
@@ -17,6 +17,7 @@ from emergency_bot import BotEngine
 from metrics import Metrics
 
 BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR.parent / "frontend"
 ALLOWED_CORS_ORIGINS = [
     r"http://localhost(:\d+)?",
     r"https://localhost(:\d+)?",
@@ -28,6 +29,7 @@ ALLOWED_CORS_ORIGINS = [
     r"https://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?",
     r"http://172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?",
     r"https://172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?",
+    "null",
 ]
 MAX_HISTORY_ITEMS = 20
 MAX_SESSIONS = 1000
@@ -54,6 +56,23 @@ _runtime_config: Dict[str, Optional[str]] = {
     "backend_url": None,
     "voice_lang": "es-ES",
 }
+
+
+def _serve_frontend_file(relative: Union[str, Path]):
+    """Serve a file from the frontend bundle safely."""
+    normalized = Path(relative)
+    candidate = (FRONTEND_DIR / normalized).resolve()
+    try:
+        candidate.relative_to(FRONTEND_DIR)
+    except ValueError:
+        abort(404)
+    if not candidate.is_file():
+        abort(404)
+    return send_from_directory(
+        FRONTEND_DIR,
+        normalized.as_posix(),
+        max_age=0,
+    )
 
 
 def _resolve_session(data: Dict[str, Any]) -> str:
@@ -172,6 +191,41 @@ def place_call(number: str) -> Dict[str, Any]:
 
     app.logger.info("Simulando llamada (mock) a %s", sanitized)
     return {"ok": True, "provider": "mock"}
+
+
+@app.get("/")
+def frontend_index():
+    return _serve_frontend_file("index.html")
+
+
+@app.get("/index.html")
+def frontend_index_alias():
+    return _serve_frontend_file("index.html")
+
+
+@app.get("/script.js")
+def frontend_script():
+    return _serve_frontend_file("script.js")
+
+
+@app.get("/style.css")
+def frontend_styles():
+    return _serve_frontend_file("style.css")
+
+
+@app.get("/manifest.webmanifest")
+def frontend_manifest():
+    return _serve_frontend_file("manifest.webmanifest")
+
+
+@app.get("/sw.js")
+def frontend_service_worker():
+    return _serve_frontend_file("sw.js")
+
+
+@app.get("/assets/<path:filename>")
+def frontend_assets(filename: str):
+    return _serve_frontend_file(Path("assets") / filename)
 
 
 @app.get("/health")
@@ -456,11 +510,23 @@ def feedback():
     return jsonify({"ok": True})
 
 
-@app.before_serving
 def _log_startup() -> None:
+    if getattr(app, "_startup_logged", False):
+        return
     app.logger.info("Flask listo en :8000")
+    app._startup_logged = True
+
+
+if hasattr(app, "before_serving"):
+    app.before_serving(_log_startup)
+else:
+    # Flask 3.x removed before_serving and before_first_request; log on the first request instead.
+    @app.before_request
+    def _ensure_startup_logged() -> None:
+        _log_startup()
 
 
 if __name__ == "__main__":
+    _log_startup()
     print("Flask listo en :8000")
     app.run(host="0.0.0.0", port=8000, debug=True)

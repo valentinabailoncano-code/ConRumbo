@@ -18,3 +18,5 @@ ts_iso,event,session_id,user_text,intent,confidence,protocol_id,step_index,laten
 2025-10-09T16:26:08Z,next_step,sess-1760027153061-131e14d247976,,,,pa_no_respira_v1,0,0
 2025-10-09T16:26:51Z,understand,sess-1760027153061-131e14d247976,Continúa,convulsiones,0.8526315789473684,,,0
 2025-10-09T16:26:51Z,next_step,sess-1760027153061-131e14d247976,,,,pa_convulsiones_v1,0,0
+2025-10-23T16:00:31Z,guide,s1,persona inconsciente,inconsciente,0.95,pa_inconsciente_v1,0,0
+2025-10-23T16:00:31Z,understand,s1,persona inconsciente,inconsciente,0.95,,,0
