@@ -29,3 +29,5 @@ ts_iso,event,session_id,user_text,intent,confidence,protocol_id,step_index,laten
 2025-10-24T11:27:10Z,guide,53049235-a8fd-4ad0-a4f0-c56cfe24460b,estoy escuchando cuál es la situación no respira,parada_respiratoria,0.95,pa_no_respira_v1,0,0
 2025-10-24T11:27:31Z,guide,53049235-a8fd-4ad0-a4f0-c56cfe24460b,no respira cuál es la situación no respira,parada_respiratoria,0.95,pa_no_respira_v1,1,0
 2025-10-24T11:56:31Z,guide,6f76e955-8c70-4a2a-ab45-961565148e2b,Guate no me gusta,inconsciente,0.8,pa_inconsciente_v1,0,1
+2025-10-24T11:59:21Z,guide,06d17bfd-6766-4c32-a0a7-bb923ebf4b90,estoy escuchando cuál es la situación no respira,parada_respiratoria,0.95,pa_no_respira_v1,0,0
+2025-10-24T11:59:32Z,guide,06d17bfd-6766-4c32-a0a7-bb923ebf4b90,estoy escuchando no respira cuál es la situación,parada_respiratoria,0.95,pa_no_respira_v1,1,0
