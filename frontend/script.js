@@ -19,8 +19,8 @@ const API_BASE = (() => {
   let storageOverride = null;
   if (typeof window !== 'undefined') {
     try {
-      const storedBackend = window.localStorage?.getItem(BACKEND_URL_STORAGE_KEY);
-      const storedApi = window.localStorage?.getItem(API_STORAGE_KEY);
+      const storedBackend = hasLocalStorage() ? window.localStorage.getItem(BACKEND_URL_STORAGE_KEY) : null;
+      const storedApi = hasLocalStorage() ? window.localStorage.getItem(API_STORAGE_KEY) : null;
       storageOverride = storedBackend || storedApi || null;
     } catch (error) {
       console.warn('No se pudo leer la configuracion del backend', error);
@@ -92,6 +92,15 @@ const settingsModalClose = document.getElementById('settingsModalClose');
 const settingThemeSelect = document.getElementById('settingTheme');
 const settingLanguageSelect = document.getElementById('settingLanguage');
 const ttsPlayer = document.getElementById('ttsPlayer');
+
+// Compat helpers for older browsers (no optional chaining)
+function hasLocalStorage() {
+  try {
+    return typeof window !== 'undefined' && window.localStorage;
+  } catch (e) {
+    return false;
+  }
+}
 
 const sessionId = (crypto && typeof crypto.randomUUID === 'function')
   ? crypto.randomUUID()
@@ -419,7 +428,7 @@ applyTranslationsToDom();
 
 function detectInitialLanguage() {
   try {
-    const stored = window.localStorage?.getItem(STORAGE_KEYS.language);
+    const stored = hasLocalStorage() ? window.localStorage.getItem(STORAGE_KEYS.language) : null;
     if (stored && SUPPORTED_LANGUAGES.includes(stored)) {
       return stored;
     }
@@ -432,7 +441,7 @@ function detectInitialLanguage() {
 
 function detectInitialTheme() {
   try {
-    const stored = window.localStorage?.getItem(STORAGE_KEYS.theme);
+    const stored = hasLocalStorage() ? window.localStorage.getItem(STORAGE_KEYS.theme) : null;
     if (stored === 'light' || stored === 'dark' || stored === 'auto') {
       return stored;
     }
@@ -526,7 +535,7 @@ function applyTheme(preference) {
     settingThemeSelect.value = normalized;
   }
   try {
-    window.localStorage?.setItem(STORAGE_KEYS.theme, normalized);
+    if (hasLocalStorage()) { window.localStorage.setItem(STORAGE_KEYS.theme, normalized); }
   } catch (error) {
     console.warn('No se pudo guardar el tema seleccionado', error);
   }
@@ -603,7 +612,7 @@ function applyLanguage(languageCode) {
     settingLanguageSelect.value = candidate;
   }
   try {
-    window.localStorage?.setItem(STORAGE_KEYS.language, candidate);
+    if (hasLocalStorage()) { window.localStorage.setItem(STORAGE_KEYS.language, candidate); }
   } catch (error) {
     console.warn('No se pudo guardar el idioma seleccionado', error);
   }
@@ -936,11 +945,11 @@ function setupConfigUi() {
 
   const storedBase = (() => {
     try {
-      const backend = window.localStorage?.getItem(STORAGE_KEYS.backendUrl);
+      const backend = hasLocalStorage() ? window.localStorage.getItem(STORAGE_KEYS.backendUrl) : null;
       if (backend) {
         return backend;
       }
-      const legacy = window.localStorage?.getItem(API_STORAGE_KEY) || '';
+      const legacy = hasLocalStorage() ? (window.localStorage.getItem(API_STORAGE_KEY) || '') : '';
       return legacy.replace(/\/api$/, '');
     } catch (error) {
       console.warn('No se pudo leer la configuracion del servidor', error);
@@ -962,8 +971,10 @@ function setupConfigUi() {
     const trimmed = input.trim();
     if (!trimmed) {
       try {
-        window.localStorage?.removeItem(API_STORAGE_KEY);
-        window.localStorage?.removeItem(STORAGE_KEYS.backendUrl);
+        if (hasLocalStorage()) {
+          window.localStorage.removeItem(API_STORAGE_KEY);
+          window.localStorage.removeItem(STORAGE_KEYS.backendUrl);
+        }
         configureApiBtn.classList.remove('footer-link--alert');
         configureApiBtn.removeAttribute('title');
       } catch (error) {
@@ -980,8 +991,10 @@ function setupConfigUi() {
     const final = `${backendOnly}/api`;
 
     try {
-      window.localStorage?.setItem(API_STORAGE_KEY, final);
-      window.localStorage?.setItem(STORAGE_KEYS.backendUrl, backendOnly);
+      if (hasLocalStorage()) {
+        window.localStorage.setItem(API_STORAGE_KEY, final);
+        window.localStorage.setItem(STORAGE_KEYS.backendUrl, backendOnly);
+      }
     } catch (error) {
       console.error('No se pudo guardar la configuracion del servidor', error);
     }
@@ -1019,8 +1032,10 @@ function normalizeBackendBase(input) {
 async function saveBackendBase(backendOnly) {
   const finalApi = `${backendOnly}/api`;
   try {
-    window.localStorage?.setItem(API_STORAGE_KEY, finalApi);
-    window.localStorage?.setItem(STORAGE_KEYS.backendUrl, backendOnly);
+    if (hasLocalStorage()) {
+      window.localStorage.setItem(API_STORAGE_KEY, finalApi);
+      window.localStorage.setItem(STORAGE_KEYS.backendUrl, backendOnly);
+    }
   } catch (error) {
     console.error('No se pudo guardar la configuracion del servidor', error);
   }
@@ -1043,8 +1058,10 @@ async function saveBackendBase(backendOnly) {
 
 function resetBackendBase() {
   try {
-    window.localStorage?.removeItem(API_STORAGE_KEY);
-    window.localStorage?.removeItem(STORAGE_KEYS.backendUrl);
+    if (hasLocalStorage()) {
+      window.localStorage.removeItem(API_STORAGE_KEY);
+      window.localStorage.removeItem(STORAGE_KEYS.backendUrl);
+    }
   } catch (error) {
     console.error('No se pudo limpiar la configuracion del servidor', error);
   }
@@ -1544,7 +1561,7 @@ function createMediaRecorder(stream) {
 
 async function handleServerRecordingComplete(chunks, mimeType) {
   let shouldRestart = false;
-  const chunkType = chunks[0]?.type || '';
+  const chunkType = (chunks && chunks[0] && chunks[0].type) || '';
   const blobType = mimeType || chunkType || 'audio/webm';
   const audioBlob = new Blob(chunks, { type: blobType });
   const formData = new FormData();
@@ -1727,7 +1744,7 @@ function updatePermissionMonitor(status) {
 }
 
 function onPermissionChange(event) {
-  const state = event?.target?.state || permissionMonitor?.state;
+  const state = (event && event.target && event.target.state) || (permissionMonitor && permissionMonitor.state);
   handlePermissionState(state);
 }
 
@@ -1885,7 +1902,7 @@ async function processUtterance(text) {
   try {
     const guideResponse = await fetch(GUIDE_URL, {
       method: 'POST',
-      signal: pendingController?.signal,
+      signal: (pendingController ? pendingController.signal : undefined),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: text,
@@ -2181,22 +2198,23 @@ async function checkHealth() {
       throw new Error();
     }
     setStatusKey('status.systemReady');
-    configureApiBtn?.classList.remove('footer-link--alert');
+    if (configureApiBtn) { configureApiBtn.classList.remove('footer-link--alert'); }
   } catch (error) {
     console.error('No se pudo verificar la API', error);
     setStatusKey('status.apiUnavailable');
-    configureApiBtn?.classList.add('footer-link--alert');
+    if (configureApiBtn) { configureApiBtn.classList.add('footer-link--alert'); }
   }
 
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  byId('btnAjustes')?.addEventListener('click', abrirAjustes);
-  byId('btnManual')?.addEventListener('click', abrirManual);
-  byId('btnConfigServidor')?.addEventListener('click', configurarServidor);
-  byId('btnLlamada112')?.addEventListener('click', () => llamar(EMERGENCY_NUMBER));
-  byId('btnLlamadaTest')?.addEventListener('click', () => llamar(TEST_NUMBER));
-  byId('btnIniciarVoz')?.addEventListener('click', iniciarVoz);
+  var el;
+  el = byId('btnAjustes'); if (el) el.addEventListener('click', abrirAjustes);
+  el = byId('btnManual'); if (el) el.addEventListener('click', abrirManual);
+  el = byId('btnConfigServidor'); if (el) el.addEventListener('click', configurarServidor);
+  el = byId('btnLlamada112'); if (el) el.addEventListener('click', function(){ llamar(EMERGENCY_NUMBER); });
+  el = byId('btnLlamadaTest'); if (el) el.addEventListener('click', function(){ llamar(TEST_NUMBER); });
+  el = byId('btnIniciarVoz'); if (el) el.addEventListener('click', iniciarVoz);
 });
 
 function byId(id) {
@@ -2233,7 +2251,7 @@ function getBackendURL() {
     return 'http://127.0.0.1:8000';
   }
   try {
-    const stored = window.localStorage?.getItem(STORAGE_KEYS.backendUrl);
+    const stored = hasLocalStorage() ? window.localStorage.getItem(STORAGE_KEYS.backendUrl) : null;
     if (stored) {
       return stored;
     }
@@ -2255,21 +2273,27 @@ async function configurarServidor() {
   if (!trimmed) {
     toast('Servidor eliminado');
     try {
-      window.localStorage?.removeItem(API_STORAGE_KEY);
-      window.localStorage?.removeItem(STORAGE_KEYS.backendUrl);
+      if (hasLocalStorage()) {
+        window.localStorage.removeItem(API_STORAGE_KEY);
+        window.localStorage.removeItem(STORAGE_KEYS.backendUrl);
+      }
     } catch (error) {
       log('No se pudo limpiar backend_url', error);
     }
-    configureApiBtn?.classList.remove('footer-link--alert');
-    configureApiBtn?.removeAttribute('title');
+    if (configureApiBtn) {
+      configureApiBtn.classList.remove('footer-link--alert');
+      configureApiBtn.removeAttribute('title');
+    }
     setTimeout(() => window.location.reload(), 200);
     return;
   }
   const backendOnly = trimmed.replace(/\/$/, '').replace(/\/api$/, '');
   const apiBase = `${backendOnly}/api`;
   try {
-    window.localStorage?.setItem(STORAGE_KEYS.backendUrl, backendOnly);
-    window.localStorage?.setItem(API_STORAGE_KEY, apiBase);
+    if (hasLocalStorage()) {
+      window.localStorage.setItem(STORAGE_KEYS.backendUrl, backendOnly);
+      window.localStorage.setItem(API_STORAGE_KEY, apiBase);
+    }
   } catch (error) {
     log('No se pudo guardar backend_url', error);
   }
