@@ -416,6 +416,8 @@ const PLAYBOOK = [
 
 
 
+let lastStatusKey = null;
+let lastStatusParams = null;
 let currentLessonId = PLAYBOOK[0] ? PLAYBOOK[0].id : null;
 let currentLanguage = detectInitialLanguage();
 let themePreference = detectInitialTheme();
@@ -779,8 +781,6 @@ let serverTranscribing = false;
 let serverCancelled = false;
 // currentLessonId is initialized earlier from PLAYBOOK
 let manualListButtons = [];
-let lastStatusKey = null;
-let lastStatusParams = null;
 let serverShouldAutoRestart = false;
 let autoSilenceRetryCount = 0;
 let autoAssistTriggered = false;
@@ -2131,9 +2131,7 @@ function setStatusKey(key, params = {}) {
 }
 
 function refreshStatus() {
-  if (!lastStatusKey) {
-    return;
-  }
+  if (!statusEl || !lastStatusKey) return;
   statusEl.textContent = t(lastStatusKey, lastStatusParams || {});
 }
 
