@@ -8,9 +8,13 @@ from pathlib import Path
 from time import time
 from typing import Any, Dict, Optional, Union
 
-from flask import Flask, request, jsonify, abort, send_from_directory
+from flask import Flask, request, jsonify, abort, send_from_directory, send_file
 from flask_cors import CORS
 import speech_recognition as sr
+try:
+    from gtts import gTTS  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    gTTS = None  # type: ignore
 
 from nlp_processor import classify_text
 from emergency_bot import BotEngine
@@ -303,6 +307,35 @@ def stt():
     return jsonify({"text": text})
 
 
+@app.get("/api/tts")
+def tts():
+    """TTS sencillo: usa gTTS si está disponible.
+    Devuelve audio/mpeg. Parámetros: text, lang (opcional, por defecto es-ES).
+    """
+    text = (request.args.get("text") or "").strip()
+    lang = (request.args.get("lang") or _runtime_config.get("voice_lang") or "es-ES").split("-")[0]
+    if not text:
+        return jsonify({"error": "missing_text"}), 400
+    if gTTS is None:
+        return jsonify({"error": "tts_unavailable"}), 501
+    tmp_mp3 = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    try:
+        try:
+            tts_obj = gTTS(text=text, lang=lang)
+            tts_obj.save(tmp_mp3.name)
+        except Exception as exc:  # pragma: no cover - depende del entorno
+            os.unlink(tmp_mp3.name)
+            return jsonify({"error": "tts_failed", "detail": str(exc)}), 500
+        return send_file(tmp_mp3.name, mimetype="audio/mpeg", as_attachment=False, download_name="tts.mp3")
+    finally:
+        # Dejar que Werkzeug haga streaming del archivo; programar limpieza posterior
+        # En entornos de desarrollo, no hace falta una cola; borramos al terminar la petición
+        try:
+            os.unlink(tmp_mp3.name)
+        except OSError:
+            pass
+
+
 @app.post("/api/guide")
 def guide():
     t0 = time()
@@ -389,6 +422,97 @@ def guide():
         "session_id": session_id,
         "protocol_id": protocol_id,
         "confidence": confidence_value,
+        "total_steps": total_steps,
+    })
+
+
+@app.post("/api/assistant")
+def assistant():
+    """Alias de /api/guide para compatibilidad con frontends alternativos."""
+    # Reusar la lógica de guide() leyendo directamente request.data
+    # Flask no facilita llamar otra vista con el mismo contexto, así que copiamos la esencia mínima
+    t0 = time()
+    data = request.get_json(force=True) or {}
+    query = (data.get("text") or data.get("query") or "").strip()
+    session_id = _resolve_session(data)
+
+    if not query:
+        return jsonify({
+            "step": 0,
+            "step_text": "No he entendido. Por favor, repite la situación.",
+            "say": "No he entendido. ¿Puedes repetir?",
+            "next": True,
+            "session_id": session_id,
+        })
+
+    intent, conf = classify_text(query)
+    protocol_id = bot.intent_to_protocol(intent)
+    protocol = bot.get_protocol(protocol_id)
+    if not protocol:
+        return jsonify({"error": "protocol_not_found"}), 404
+
+    previous = _session_state.get(session_id, {})
+    history = list(previous.get("history", []))
+    history.append({"user_text": query, "intent": intent})
+    if len(history) > MAX_HISTORY_ITEMS:
+        history = history[-MAX_HISTORY_ITEMS:]
+
+    previous_protocol = previous.get("protocol_id")
+    previous_index = int(previous.get("step_index", -1))
+
+    if previous_protocol != protocol_id:
+        step_index = 0
+    else:
+        step_index = previous_index + 1
+
+    steps = protocol.get("steps", [])
+    total_steps = len(steps)
+    if not steps:
+        step_number = 0
+        step_text = "No hay instrucciones disponibles en este momento."
+        has_next = False
+    else:
+        if step_index >= total_steps:
+            step_text = (
+                "Has completado las instrucciones. Permanece con la persona y espera ayuda profesional."
+            )
+            step_number = total_steps
+            step_index = total_steps - 1
+            has_next = False
+        else:
+            step_text = steps[step_index]
+            step_number = step_index + 1
+            has_next = step_index < (total_steps - 1)
+
+    context = {
+        "protocol_id": protocol_id,
+        "step_index": step_index,
+        "history": history,
+        "total_steps": total_steps,
+    }
+    _session_state[session_id] = context
+    _prune_sessions()
+
+    metrics.log(
+        event="assistant",
+        session_id=session_id,
+        user_text=query,
+        intent=intent,
+        confidence=conf,
+        protocol_id=protocol_id,
+        step_index=step_index,
+        latency_ms=int((time() - t0) * 1000),
+    )
+
+    return jsonify({
+        "step": step_number,
+        "step_text": step_text,
+        "say": step_text,
+        "next": has_next,
+        "title": protocol.get("title", "Protocolo"),
+        "session_id": session_id,
+        "protocol_id": protocol_id,
+        "confidence": round(conf, 3) if conf is not None else None,
         "total_steps": total_steps,
     })
 

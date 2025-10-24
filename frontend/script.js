@@ -91,6 +91,7 @@ const settingsModal = document.getElementById('settingsModal');
 const settingsModalClose = document.getElementById('settingsModalClose');
 const settingThemeSelect = document.getElementById('settingTheme');
 const settingLanguageSelect = document.getElementById('settingLanguage');
+const ttsPlayer = document.getElementById('ttsPlayer');
 
 const sessionId = (crypto && typeof crypto.randomUUID === 'function')
   ? crypto.randomUUID()
@@ -1970,68 +1971,126 @@ function renderGuideStep(data) {
 }
 
 async function speak(text) {
-  if (!('speechSynthesis' in window)) {
-    handleSpeechFinished();
-    return;
-  }
-  await ensureSpeechReady();
-  stopSpeaking();
-  log('TTS speak:', text);
-  activeUtterance = new SpeechSynthesisUtterance(text);
-  const targetLocale = getCurrentLocale();
-  activeUtterance.lang = targetLocale;
-  activeUtterance.pitch = 1;
-  activeUtterance.rate = 1;
-  activeUtterance.volume = 1;
-  const synth = window.speechSynthesis;
-  const voices = synth.getVoices();
-  if (voices && voices.length) {
-    const lowerLang = (value) => (value || '').toLowerCase();
-    const targetLower = (targetLocale || '').toLowerCase();
-    const baseLang = targetLower.split('-')[0] || targetLower;
-    const exact = voices.find((voice) => lowerLang(voice.lang) === targetLower);
-    const localeMatch = voices.find((voice) => lowerLang(voice.lang).startsWith(baseLang));
-    const contains = voices.find((voice) => lowerLang(voice.lang).includes(baseLang));
-    activeUtterance.voice = exact || localeMatch || contains || voices[0];
-  }
-  return new Promise((resolve) => {
-    let resolved = false;
-    const settle = () => {
-      if (resolved) {
-        return;
-      }
-      resolved = true;
-      resolve();
-    };
-    activeUtterance.onstart = () => {
-      log('TTS start');
-      settle();
-    };
-    activeUtterance.onend = (event) => {
-      log('TTS end');
-      handleSpeechFinished();
-      settle();
-    };
-    activeUtterance.onerror = (event) => {
-      log('TTS error', event);
-      console.error('Error reproduciendo la instruccion', event.error || event);
-      setStatusKey('status.speechFailed');
-      handleSpeechFinished();
-      settle();
-    };
-    try {
-      if (typeof synth.resume === 'function' && synth.paused) {
-        synth.resume();
-      }
-      synth.speak(activeUtterance);
-      window.setTimeout(() => settle(), 120);
-    } catch (error) {
-      console.error('No se pudo iniciar la reproduccion de la instruccion', error);
-      setStatusKey('status.speechFailed');
-      handleSpeechFinished();
-      settle();
+  const tryWebSpeech = async () => {
+    if (!('speechSynthesis' in window)) {
+      return false;
     }
-  });
+    const ok = await ensureSpeechReady().catch(() => false);
+    if (!ok) {
+      return false;
+    }
+    stopSpeaking();
+    log('TTS speak (web):', text);
+    activeUtterance = new SpeechSynthesisUtterance(text);
+    const targetLocale = getCurrentLocale();
+    activeUtterance.lang = targetLocale;
+    activeUtterance.pitch = 1;
+    activeUtterance.rate = 1;
+    activeUtterance.volume = 1;
+    const synth = window.speechSynthesis;
+    const voices = synth.getVoices();
+    if (voices && voices.length) {
+      const lowerLang = (value) => (value || '').toLowerCase();
+      const targetLower = (targetLocale || '').toLowerCase();
+      const baseLang = targetLower.split('-')[0] || targetLower;
+      const exact = voices.find((voice) => lowerLang(voice.lang) === targetLower);
+      const localeMatch = voices.find((voice) => lowerLang(voice.lang).startsWith(baseLang));
+      const contains = voices.find((voice) => lowerLang(voice.lang).includes(baseLang));
+      activeUtterance.voice = exact || localeMatch || contains || voices[0];
+    }
+    return new Promise((resolve) => {
+      let resolved = false;
+      const settle = () => {
+        if (resolved) {
+          return;
+        }
+        resolved = true;
+        resolve(true);
+      };
+      activeUtterance.onstart = () => {
+        log('TTS start');
+        settle();
+      };
+      activeUtterance.onend = () => {
+        log('TTS end');
+        handleSpeechFinished();
+        settle();
+      };
+      activeUtterance.onerror = (event) => {
+        log('TTS error', event);
+        console.error('Error reproduciendo la instruccion', event.error || event);
+        setStatusKey('status.speechFailed');
+        handleSpeechFinished();
+        settle();
+      };
+      try {
+        if (typeof synth.resume === 'function' && synth.paused) {
+          synth.resume();
+        }
+        synth.speak(activeUtterance);
+        window.setTimeout(() => settle(), 120);
+      } catch (error) {
+        console.error('No se pudo iniciar la reproduccion de la instruccion', error);
+        setStatusKey('status.speechFailed');
+        handleSpeechFinished();
+        settle();
+      }
+    });
+  };
+
+  // Backend TTS fallback (iOS Safari, or when Web Speech not available)
+  const tryBackendTts = async () => {
+    if (!ttsPlayer) {
+      return false;
+    }
+    try {
+      const base = getBackendURL().replace(/\/$/, '');
+      const url = `${base}/api/tts?text=${encodeURIComponent(text)}&lang=${encodeURIComponent(getCurrentLocale())}`;
+      return await new Promise((resolve) => {
+        const cleanup = () => {
+          ttsPlayer.onended = null;
+          ttsPlayer.onerror = null;
+          ttsPlayer.oncanplay = null;
+        };
+        ttsPlayer.onended = () => {
+          log('TTS backend end');
+          handleSpeechFinished();
+          cleanup();
+          resolve(true);
+        };
+        ttsPlayer.onerror = (e) => {
+          console.warn('TTS backend error', e);
+          setStatusKey('status.speechFailed');
+          handleSpeechFinished();
+          cleanup();
+          resolve(false);
+        };
+        ttsPlayer.oncanplay = async () => {
+          try {
+            await ttsPlayer.play();
+          } catch (error) {
+            console.warn('No se pudo reproducir el TTS backend', error);
+            setStatusKey('status.speechFailed');
+            cleanup();
+            resolve(false);
+          }
+        };
+        // iOS/Safari requires gesture-unlocked audio; ensure context resumed earlier
+        ttsPlayer.src = url;
+        // Resolve after a small delay to not block flow even if playback is slow
+        window.setTimeout(() => resolve(true), 180);
+      });
+    } catch (error) {
+      console.warn('Fallo en TTS backend', error);
+      return false;
+    }
+  };
+
+  // Pause recognition during speech
+  await pauseRecognitionForSpeech();
+  const usedWeb = await tryWebSpeech();
+  if (usedWeb) return;
+  await tryBackendTts();
 }
 
 function stopSpeaking() {
