@@ -24,3 +24,7 @@ ts_iso,event,session_id,user_text,intent,confidence,protocol_id,step_index,laten
 2025-10-24T11:05:44Z,guide,32a328e5-8508-409d-84ef-b81459c6dc1a,inspiró,parada_respiratoria,0.835,pa_no_respira_v1,0,1
 2025-10-24T11:06:11Z,guide,f687f1de-da08-477d-aff0-a31fa063eb17,oh a don hoy para la primavera que,quemadura,0.747,pa_quemadura_v1,0,2
 2025-10-24T11:19:21Z,guide,779bfe9a-dcb1-4c48-9d73-69fc52a86c03,no respira,parada_respiratoria,0.95,pa_no_respira_v1,0,0
+2025-10-24T11:25:39Z,guide,0d191501-2fac-4b5a-90c0-a162704da73c,estoy escuchando cuál es la situación no respira,parada_respiratoria,0.95,pa_no_respira_v1,0,0
+2025-10-24T11:26:11Z,guide,0d191501-2fac-4b5a-90c0-a162704da73c,estoy escuchando continua cuál es la situación continúa,inconsciente,0.721,pa_inconsciente_v1,0,5
+2025-10-24T11:27:10Z,guide,53049235-a8fd-4ad0-a4f0-c56cfe24460b,estoy escuchando cuál es la situación no respira,parada_respiratoria,0.95,pa_no_respira_v1,0,0
+2025-10-24T11:27:31Z,guide,53049235-a8fd-4ad0-a4f0-c56cfe24460b,no respira cuál es la situación no respira,parada_respiratoria,0.95,pa_no_respira_v1,1,0

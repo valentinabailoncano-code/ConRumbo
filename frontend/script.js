@@ -902,6 +902,18 @@ if (settingLanguageSelect) {
   });
 }
 
+const manualText = document.getElementById('manualText');
+const sendManual = document.getElementById('sendManual');
+if (sendManual && manualText) {
+  sendManual.addEventListener('click', async () => {
+    const text = (manualText.value || '').trim();
+    if (!text) return;
+    liveTextEl.textContent = text;
+    await processUtterance(text);
+    manualText.value = '';
+  });
+}
+
 refreshManualContent();
 
 function setupCallUi() {
@@ -1987,6 +1999,9 @@ function renderGuideStep(data) {
   item.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
+// Force backend TTS (disables Web Speech API to avoid silent playback)
+const FORCE_BACKEND_TTS = true;
+
 async function speak(text) {
   const tryWebSpeech = async () => {
     if (!('speechSynthesis' in window)) {
@@ -2105,7 +2120,8 @@ async function speak(text) {
 
   // Pause recognition during speech
   await pauseRecognitionForSpeech();
-  const usedWeb = await tryWebSpeech();
+  // If forcing backend TTS, skip Web Speech entirely
+  const usedWeb = FORCE_BACKEND_TTS ? false : await tryWebSpeech();
   if (usedWeb) return;
   await tryBackendTts();
 }
