@@ -66,6 +66,10 @@ const call112Btn = document.getElementById('btnCall112');
 const callTestBtn = document.getElementById('btnCallTest');
 const callButtons = [call112Btn, callTestBtn].filter(Boolean);
 const configureApiBtn = document.getElementById('btnConfigureApi');
+const settingBackendInput = document.getElementById('settingBackendUrl');
+const saveBackendBtn = document.getElementById('saveBackendUrl');
+const resetBackendBtn = document.getElementById('resetBackendUrl');
+const currentServerLabel = document.getElementById('currentServerLabel');
 const micLabel = btnMic ? btnMic.querySelector('.mic-card__label') : null;
 
 const modal = document.getElementById('callModal');
@@ -167,6 +171,10 @@ const TRANSLATIONS = {
     "settings.languageOptionEs": "Espa\u00f1ol",
     "settings.languageOptionEn": "Ingl\u00e9s",
     "settings.languageInfo": "Los cambios se aplican de inmediato.",
+    "settings.server": "Servidor",
+    "settings.backendUrlLabel": "URL del backend",
+    "settings.backendSave": "Guardar",
+    "settings.backendReset": "Restaurar por defecto",
     "status.audioPermission": "Necesito acceso al audio para ayudarte.",
     "status.pressStart": "Pulsa \"Iniciar\" para grabar tu voz y obtener ayuda.",
     "status.srUnsupported": "El reconocimiento de voz no es compatible con este dispositivo.",
@@ -246,6 +254,10 @@ const TRANSLATIONS = {
     "settings.languageOptionEs": "Spanish",
     "settings.languageOptionEn": "English",
     "settings.languageInfo": "Changes are applied instantly.",
+    "settings.server": "Server",
+    "settings.backendUrlLabel": "Backend URL",
+    "settings.backendSave": "Save",
+    "settings.backendReset": "Reset to default",
     "status.audioPermission": "I need access to audio to assist you.",
     "status.pressStart": "Press \"Start\" to record your voice and get help.",
     "status.srUnsupported": "Speech recognition is not supported on this device.",
@@ -570,8 +582,9 @@ function applyTranslationsToDom() {
   if (btnCallTest) {
     btnCallTest.textContent = t('steps.testCall', { number: TEST_NUMBER });
   }
-  if (configureApiBtn) {
-    configureApiBtn.textContent = t('footer.configureServer');
+  // Settings: server section translations
+  if (settingBackendInput) {
+    settingBackendInput.placeholder = t('prompt.backendUrl');
   }
   if (copyNumberBtn) {
     copyNumberBtn.textContent = t('callModal.copy');
@@ -837,17 +850,23 @@ if (manualModal) {
   });
 }
 
-if (btnSettings) {
-  btnSettings.addEventListener('click', () => {
-    if (settingThemeSelect) {
-      settingThemeSelect.value = themePreference;
-    }
-    if (settingLanguageSelect) {
-      settingLanguageSelect.value = currentLanguage;
-    }
-    showSettingsModal();
-  });
-}
+  if (btnSettings) {
+    btnSettings.addEventListener('click', () => {
+      if (settingThemeSelect) {
+        settingThemeSelect.value = themePreference;
+      }
+      if (settingLanguageSelect) {
+        settingLanguageSelect.value = currentLanguage;
+      }
+      if (settingBackendInput) {
+        settingBackendInput.value = getBackendURL();
+      }
+      if (currentServerLabel) {
+        currentServerLabel.textContent = t('config.currentServer', { url: getBackendURL() });
+      }
+      showSettingsModal();
+    });
+  }
 
 if (settingsModalClose) {
   settingsModalClose.addEventListener('click', hideSettingsModal);
@@ -907,7 +926,10 @@ function setupCallUi() {
 }
 
 function setupConfigUi() {
+  // Footer button is optional; server config is now inside Settings modal.
   if (!configureApiBtn) {
+    // still initialize Settings modal controls if present
+    initSettingsServerControls();
     return;
   }
 
@@ -982,6 +1004,83 @@ function setupConfigUi() {
     setStatusKey('status.serverUpdated');
     setTimeout(() => window.location.reload(), 200);
   });
+  // Also initialize modal controls if present
+  initSettingsServerControls();
+}
+
+function normalizeBackendBase(input) {
+  const trimmed = (input || '').trim();
+  if (!trimmed) return '';
+  const noSlash = trimmed.replace(/\/$/, '');
+  return noSlash.replace(/\/api$/, '');
+}
+
+async function saveBackendBase(backendOnly) {
+  const finalApi = `${backendOnly}/api`;
+  try {
+    window.localStorage?.setItem(API_STORAGE_KEY, finalApi);
+    window.localStorage?.setItem(STORAGE_KEYS.backendUrl, backendOnly);
+  } catch (error) {
+    console.error('No se pudo guardar la configuracion del servidor', error);
+  }
+  if (currentServerLabel) {
+    currentServerLabel.textContent = t('config.currentServer', { url: backendOnly });
+  }
+  toast('Servidor guardado');
+  try {
+    await fetch(`${backendOnly}/save-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backend_url: backendOnly, voice_lang: getCurrentLocale() }),
+    });
+  } catch (error) {
+    console.warn('No se pudo sincronizar la configuracion con el backend', error);
+  }
+  setStatusKey('status.serverUpdated');
+  setTimeout(() => window.location.reload(), 200);
+}
+
+function resetBackendBase() {
+  try {
+    window.localStorage?.removeItem(API_STORAGE_KEY);
+    window.localStorage?.removeItem(STORAGE_KEYS.backendUrl);
+  } catch (error) {
+    console.error('No se pudo limpiar la configuracion del servidor', error);
+  }
+  if (settingBackendInput) {
+    settingBackendInput.value = getBackendURL();
+  }
+  if (currentServerLabel) {
+    currentServerLabel.textContent = '';
+  }
+  toast('Servidor eliminado');
+  setStatusKey('status.serverReset');
+  setTimeout(() => window.location.reload(), 200);
+}
+
+function initSettingsServerControls() {
+  if (settingBackendInput) {
+    settingBackendInput.placeholder = t('prompt.backendUrl');
+    settingBackendInput.value = getBackendURL();
+  }
+  if (currentServerLabel) {
+    currentServerLabel.textContent = t('config.currentServer', { url: getBackendURL() });
+  }
+  if (saveBackendBtn) {
+    saveBackendBtn.addEventListener('click', async () => {
+      const normalized = normalizeBackendBase(settingBackendInput ? settingBackendInput.value : '');
+      if (!normalized) {
+        resetBackendBase();
+        return;
+      }
+      await saveBackendBase(normalized);
+    });
+  }
+  if (resetBackendBtn) {
+    resetBackendBtn.addEventListener('click', () => {
+      resetBackendBase();
+    });
+  }
 }
 
 function ensureVoicesReady() {

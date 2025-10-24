@@ -875,6 +875,17 @@ body.theme-dark .manual-list__item-summary {
   color: var(--text-main);
 }
 
+/* Match input style to select for server URL */
+.settings-option input[type="text"] {
+  border-radius: 14px;
+  border: 1px solid rgba(51, 65, 85, 0.16);
+  background: rgba(255, 255, 255, 0.7);
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
 .settings-option select:focus {
   border-color: rgba(240, 70, 87, 0.5);
   outline: none;
@@ -887,7 +898,18 @@ body.theme-dark .manual-list__item-summary {
   color: var(--text-muted);
 }
 
+.settings-actions {
+  display: flex;
+  gap: 10px;
+}
+
 body.theme-dark .settings-option select {
+  background: rgba(30, 41, 59, 0.6);
+  border-color: rgba(148, 163, 184, 0.25);
+  color: var(--text-main);
+}
+
+body.theme-dark .settings-option input[type="text"] {
   background: rgba(30, 41, 59, 0.6);
   border-color: rgba(148, 163, 184, 0.25);
   color: var(--text-main);
