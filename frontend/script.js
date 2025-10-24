@@ -52,7 +52,7 @@ const API_BASE = (() => {
   return `${safeProtocol}//${resolvedHost}${portSegment}/api`;
 })();
 const EMERGENCY_NUMBER = '112';
-const TEST_NUMBER = '689876686';
+const TEST_NUMBER = '+34689876686';
 const CALL_KEYWORDS = {
   es: ['llamar', 'emergencia', '112', 'ambulancia', 'ayuda', 'socorro'],
   en: ['call', 'emergency', '112', 'help', 'ambulance', '911']
@@ -394,7 +394,7 @@ const PLAYBOOK = [
 
 
 
-currentLessonId = PLAYBOOK[0] ? PLAYBOOK[0].id : null;
+let currentLessonId = PLAYBOOK[0] ? PLAYBOOK[0].id : null;
 let currentLanguage = detectInitialLanguage();
 let themePreference = detectInitialTheme();
 let systemDarkMatcher = null;
@@ -754,7 +754,7 @@ let serverStopTimer = null;
 let serverAutoLoop = false;
 let serverTranscribing = false;
 let serverCancelled = false;
-let currentLessonId = null;
+// currentLessonId is initialized earlier from PLAYBOOK
 let manualListButtons = [];
 let lastStatusKey = null;
 let lastStatusParams = null;
@@ -2036,8 +2036,8 @@ window.addEventListener('DOMContentLoaded', () => {
   byId('btnAjustes')?.addEventListener('click', abrirAjustes);
   byId('btnManual')?.addEventListener('click', abrirManual);
   byId('btnConfigServidor')?.addEventListener('click', configurarServidor);
-  byId('btnLlamada112')?.addEventListener('click', () => llamar('112'));
-  byId('btnLlamadaTest')?.addEventListener('click', () => llamar('689876686'));
+  byId('btnLlamada112')?.addEventListener('click', () => llamar(EMERGENCY_NUMBER));
+  byId('btnLlamadaTest')?.addEventListener('click', () => llamar(TEST_NUMBER));
   byId('btnIniciarVoz')?.addEventListener('click', iniciarVoz);
 });
 
