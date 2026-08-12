@@ -38,3 +38,7 @@ ts_iso,event,session_id,user_text,intent,confidence,protocol_id,step_index,laten
 2025-10-24T15:40:06Z,guide,f2e33a2c-1659-42f1-83ec-cc8a9e0a9893,estoy escuchando cuál es la situación no respira,parada_respiratoria,0.95,pa_no_respira_v1,1,0
 2025-10-24T15:46:07Z,guide,501c406b-cea9-4cee-872c-48a0d6122451,estoy escuchando cuál es la situación no respira,parada_respiratoria,0.95,pa_no_respira_v1,0,0
 2025-10-24T15:46:20Z,guide,501c406b-cea9-4cee-872c-48a0d6122451,estoy escuchando cuál es la situación sigue sin respirar,parada_respiratoria,0.733,pa_no_respira_v1,1,4
+2026-08-12T10:23:15Z,guide,f54404dc-191a-4549-888f-3d439717e08e,me he hecho una,atragantamiento,0.774,pa_atragantamiento_v1,0,6
+2026-08-12T10:30:10Z,guide,eb1d4fc2-8a07-4dfa-96d1-49d22a83ce66,no respiro,parada_respiratoria,0.96,pa_no_respira_v1,0,0
+2026-08-12T10:48:59Z,guide,40809c77-12ee-4796-89d9-ff8a1813d05c,no,hemorragia,0.76,pa_hemorragia_v1,0,1
+2026-08-12T10:56:00Z,guide,81efe7c6-69d6-44e1-a40d-6a310885a8be,no respira,parada_respiratoria,0.95,pa_no_respira_v1,0,3

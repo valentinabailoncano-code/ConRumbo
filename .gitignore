@@ -20,3 +20,5 @@ backend/__pycache__/
 # === ARCHIVOS DEL SISTEMA ===
 .DS_Store
 Thumbs.db
+
+Add-Content .gitignore "`ncerts/"

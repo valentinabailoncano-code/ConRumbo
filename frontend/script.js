@@ -1583,10 +1583,20 @@ async function handleServerRecordingComplete(chunks, mimeType) {
     if (!transcript) {
       serverAutoLoop = false;
       autoSilenceRetryCount += 1;
-      serverShouldAutoRestart = true;
+
       if (autoSilenceRetryCount <= MAX_SILENCE_AUTO_RETRIES) {
         await speak(t('voice.repeatPrompt'));
+
+        // Dar al usuario un pequeño margen después de que termine la voz
+        await new Promise((resolve) => window.setTimeout(resolve, 700));
+
+        serverShouldAutoRestart = true;
+      } else {
+        // Después de varios intentos fallidos, parar en vez de entrar en bucle
+        serverShouldAutoRestart = false;
+        autoSilenceRetryCount = 0;
       }
+
       setStatusKey('status.noUnderstanding');
       return;
     }
@@ -2084,6 +2094,8 @@ async function speak(text) {
         };
         ttsPlayer.oncanplay = async () => {
           try {
+            ttsPlayer.muted = false;
+            ttsPlayer.volume = 1;
             await ttsPlayer.play();
           } catch (error) {
             console.warn('No se pudo reproducir el TTS backend', error);
@@ -2094,8 +2106,6 @@ async function speak(text) {
         };
         // iOS/Safari requires gesture-unlocked audio; ensure context resumed earlier
         ttsPlayer.src = url;
-        // Resolve after a small delay to not block flow even if playback is slow
-        window.setTimeout(() => resolve(true), 180);
       });
     } catch (error) {
       console.warn('Fallo en TTS backend', error);
@@ -2105,8 +2115,21 @@ async function speak(text) {
 
   // Pause recognition during speech
   await pauseRecognitionForSpeech();
+
+  // En iPhone/iPad usamos directamente el TTS del backend.
+  // Safari puede indicar que speechSynthesis ha arrancado aunque no produzca audio.
+  if (IS_IOS_DEVICE) {
+    const backendWorked = await tryBackendTts();
+    if (!backendWorked) {
+      await tryWebSpeech();
+    }
+    return;
+  }
+
+  // Desktop: mantener el comportamiento actual.
   const usedWeb = await tryWebSpeech();
   if (usedWeb) return;
+
   await tryBackendTts();
 }
 

@@ -653,4 +653,4 @@ else:
 if __name__ == "__main__":
     _log_startup()
     print("Flask listo en :8000")
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(host="0.0.0.0", port=8000,ssl_context=("../certs/10.32.86.31+2.pem", "../certs/10.32.86.31+2-key.pem"))
