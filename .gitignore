@@ -22,3 +22,5 @@ backend/__pycache__/
 Thumbs.db
 
 Add-Content .gitignore "`ncerts/"
+# Certificados locales HTTPS
+certs/
